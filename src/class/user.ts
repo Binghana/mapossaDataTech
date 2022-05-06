@@ -101,7 +101,7 @@ export default class User implements ISystemData {
     public disabled: boolean = false;
 
     public isPremium : boolean = false;
-
+    public idAdalo : number = 0;
     // la méthode de normalisation
     /**
      * Cette fonction s'occupe de Changer un item de la collection
@@ -131,7 +131,7 @@ export default class User implements ISystemData {
         if ("disabled" in userItem) user.disabled = userItem.disabled;
         if ("emailVerified" in userItem) user.emailVerified = userItem.emailVerified;
         if ("isPremium" in userItem) user.isPremium = userItem.isPremium;
-
+        if( "idAdalo" in userItem) user.idAdalo = userItem.idAdalo ;
         return user
     }
     /**
@@ -228,7 +228,7 @@ export default class User implements ISystemData {
      * @returns un object qui représente les informations de l'utilisateur
      * qui a été mis à jour
      */
-    static async update(  user: User) {
+    static async update(  user : any) {
         let uid = user.id as string;
         delete user.id;
         

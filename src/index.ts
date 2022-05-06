@@ -17,10 +17,11 @@ import Offre from "./class/mapossaBusiness/offre";
 import Produit from "./class/mapossaBusiness/produit";
 import Commande from "./class/mapossaBusiness/commande";
 import SMS from "./class/sms/SMS";
-import MapossaDataTech  from "./class/mapossaDataTech";
+import MapossaDataTech from "./class/mapossaDataTech";
 import MapossaError from "./class/mapossaError";
 import OperateursFinanciers from "./class/operateurs/OperateursFinanciers";
 
+import mapossaScrappingData from "./mapossaScrapping/metaData";
 
 
 
@@ -31,9 +32,10 @@ import OperateursFinanciers from "./class/operateurs/OperateursFinanciers";
 const mapossaDataTech = {
     users: express(),
     cartesDeFidelite: express(),
-    sms : express(),
-    operateurFinanciers : express(),
-    logoCategories : express()
+    sms: express(),
+    operateurFinanciers: express(),
+    logoCategories: express(),
+    mapossaScrapping : express()
 };
 
 
@@ -43,49 +45,42 @@ const mapossaDataTech = {
  */
 mapossaDataTech.users.post("/", async (request, response) => {
     try {
-        // if (!("email" in request.body && request.body.email) ) response.send(new Response("Il manque l'email de l'utilisateur", true)).status(201);
-        // if (!( ("isSmartWallet" in request.body ) || ("isBusiness" in request.body))  ) response.send(new Response("Il faut préciser si l'utilisateur est un smartwallet et ou un business", true )).status(201);
-
-        // // on vérifie si l'utilisateur existe déjà il pourrait etre un smar 
-        // //functions.logger.log(request.body);
-        // const tempUser = await User.getByEmail(request.body.email);
-        // // on regarde si l'utilisateur existe dèjà
-        // if ( tempUser ) {
-        //     // c'est smartwwallet qui passe business
-        //     if (request.body.isBusiness) {
-        //         functions.logger.log("c'est un business")
-        //         if (tempUser.isBusiness){ response.send(new Response("L'utilisateur est déja un business ", true)).status(201)}
-        //         else
-        //         {User.grantBusiness(tempUser)
-        //         response.send(new Response("L'utilisateur est bien passé business", false, tempUser)).status(201);}
-        //     }else {
-        //         response.send(new Response("L'utilisateur existe déjà :", true, tempUser)).status(201);
-        //     }
-        // }  else  {
-        //     // l'utilisateur n'existe pas, on crée alors l'uilisateur
-        //     const gtu = User.toGoogleUser(request.body);
-        //     const gUser = await auth.createUser(gtu);
-        //     const user = await User.create({ uid: gUser.uid, ...request.body })
-
-        //     response.send(new Response("L'utilisateur a été crée avec succès", false, user)).status(201);
-        //     //User.generateEmailVerificationLink(request.body.email);
-        // }
-       const fResponse  = await MapossaDataTech.createUser(request.body) as User;
-       response.status(201).send(new Response("Le compte utilisateur a été crée avec succès", false, fResponse));
+        const usr = await User.create(request.body)
+        response.status(201).send(new Response("Le compte utilisateur a été crée avec succès", false, usr));
     } catch (error) {
-        handleError(error,response);
+        handleError(error, response);
     }
 
 });
 /**
  * Récuperer un utilisateur grâce à son identifiant
  */
-mapossaDataTech.users.post("/:email", async (request, response) => {
+mapossaDataTech.users.get("/", async (request, response) => {
     try {
-        response.send(new Response("Voici l'user id de l'utilisateur", false, (await auth.getUserByEmail(request.params.email)).uid))
-       
+        if (!("email" in request.query)) response.send(new Response("Il manque l'email de l'utilisateur comme dans les query params", true))
+        const user = (await auth.getUserByEmail(request.query.email as string))
+        const ruser = await User.getById(user.uid)
+        response.send(new Response("Voici l'user id de l'utilisateur", false, ruser))
+
     } catch (error) {
         response.status(500).send(new Response("Une erreur est surveunue lors de la récupération", true, error));
+    }
+
+});
+/**
+ * Ajouter l'idAdalo à l'utlisateur à partir de s on email
+ */
+mapossaDataTech.users.put("/", async (request, response) => {
+    try {
+        if (!("email" in request.body)) response.status(400).send(new Response("Il manque l'email de l'utilisateur dans le corps de la requête", true));
+        const uid = (await auth.getUserByEmail(request.body.email)).uid;
+        if (!("idAdalo" in request.body)) response.status(400).send(new Response("Il manque l'id Adalo dans le corps de la requête", true));
+        const idAdalo = request.body.idAdalo;
+        await User.update({ id: uid, idAdalo: idAdalo });
+        response.send(new Response("l'id adalo a été inséré avec succès", false));
+
+    } catch (error) {
+        handleError(error, response)
     }
 
 });
@@ -94,7 +89,7 @@ mapossaDataTech.users.post("/:email", async (request, response) => {
  */
 mapossaDataTech.users.get("/:id", async (request, response) => {
     try {
-        
+
         response.send(await User.getById(request.params.id))
     } catch (error) {
         response.status(500).send(new Response("Une erreur est surveunue lors de la récupération", true, error));
@@ -106,8 +101,8 @@ mapossaDataTech.users.get("/:id", async (request, response) => {
  */
 mapossaDataTech.users.put("/:id", async (request, response) => {
     try {
-        
-        response.send(await User.update(User.normalize({id : request.params.id, ...request.body})));
+
+        response.send(await User.update(User.normalize({ id: request.params.id, ...request.body })));
     } catch (error) {
         response.status(500).send(new Response("Une erreur est surveunue lors de la modification", true, error));
     }
@@ -141,36 +136,36 @@ mapossaDataTech.users.post("/:idUser/" + Transaction.collectionName, async (requ
     try {
         // Si le corps de la requête contient un tableau alors il s'agit de créer
         // plusieurs transactions à la fois
-        if (Array.isArray(request.body)) {
+        if ("transactions" in request.body) {
             //  Création de plusieurs Transactions à la fois
             functions.logger.log("créons les transactions");
-            const transactionsCreated = await Transaction.bulkCreate(request.params.idUser, request.body);
-            
-            response.status(201).send(new Response("Les transactions ont été créees avec succès", false, transactionsCreated));
+            await MapossaDataTech.bulkCreateTransactionAuto(request.params.idUser, request.body.transactions);
+
+            response.status(201).send(new Response("Les transactions ont été créees avec succès", false));
         } else {
             //  ll s'agit de créer une seule transaction 
             //  Création d'une Transaction d'un utilisateur
-            if ("idCompte" in request.body ){
-                if( request.body.idCompte){
+            if ("idCompte" in request.body) {
+                if (request.body.idCompte) {
 
-                    if("idcomptedest" in request.headers){
-                        let ids = await MapossaDataTech.creerTransactionVirement(request.params.idUser , request.body , request.headers.idcomptedest as string)
+                    if ("idcomptedest" in request.headers) {
+                        let ids = await MapossaDataTech.creerTransactionVirement(request.params.idUser, request.body, request.headers.idcomptedest as string)
                         response.status(201).send(new Response("la transaction de virement a été crée avec succès", false, ids));
 
-                    }else {
+                    } else {
                         let ids = await MapossaDataTech.creerTransaction(request.params.idUser, request.body)
                         response.status(201).send(new Response("la transaction a été crée avec succès", false, ids));
                     }
-                }else {
+                } else {
                     response.status(403).send(new Response("Il le champ 'idCompte' de la transaction est vie ou invalide", true));
                 }
-            }else {
+            } else {
                 response.status(403).send(new Response("Il manque le champ 'idCompte' de la transaction", true));
 
             }
         }
     } catch (error) {
-        handleError(error,response)
+        handleError(error, response)
     }
 });
 /**
@@ -230,7 +225,7 @@ mapossaDataTech.users.put("/:idUser/" + Transaction.collectionName + "/:idTransa
         //on vérifie bien que le corps de la requête est une transaction
         if (Transaction.isTransaction(request.body)) {
             // on met alors à jour la transaction
-            const updatedTransaction = await MapossaDataTech.modifieTransaction(request.params.idUser , request.body , request.params.idTransaction)
+            const updatedTransaction = await MapossaDataTech.modifieTransaction(request.params.idUser, request.body, request.params.idTransaction)
             response.status(200).send(new Response("La transaction a été mis à jour", false, updatedTransaction));
         } else {
             // il ne s'agit pas d'une transaction car il manque des attributs
@@ -247,7 +242,7 @@ mapossaDataTech.users.put("/:idUser/" + Transaction.collectionName + "/:idTransa
             }))
         }
     } catch (error) {
-       handleError(error,response);
+        handleError(error, response);
     }
 });
 /**
@@ -326,25 +321,25 @@ mapossaDataTech.users.delete("/:idUser/" + Transaction.collectionName, async (re
 mapossaDataTech.users.post("/:idUser/" + CompteFinancier.collectionName, async (request, response) => {
 
     //try {
-        // on regarde si le corps de la requête est un tableau pour savoir 
-        // s'il faut créer plusieurs comptes ou pas
-        if (Array.isArray(request.body)) {
-            // alors on doit créer pulsieurs comptes
-            const comptesCreated = await CompteFinancier.bulkCreate(request.params.idUser, request.body);
-            response.status(201).send(new Response("Les comptes financiers ont été crées avec succès", false, comptesCreated))
-        } else
-        // il faut créer un seul compte
-        {
-            functions.logger.log("Commencons la créatoin du compte");
-            if (! ("solde" in request.body)) throw new MapossaError("Il manque le solde du compte à créer");
-            
-            let ids = await MapossaDataTech.creerCompteFinancier(request.params.idUser,request.body);
-            
-            response.status(201).send(new Response("Le compte financier a été crée avec succès", false, ids))
-        }
-    
+    // on regarde si le corps de la requête est un tableau pour savoir 
+    // s'il faut créer plusieurs comptes ou pas
+    if (Array.isArray(request.body)) {
+        // alors on doit créer pulsieurs comptes
+        const comptesCreated = await CompteFinancier.bulkCreate(request.params.idUser, request.body);
+        response.status(201).send(new Response("Les comptes financiers ont été crées avec succès", false, comptesCreated))
+    } else
+    // il faut créer un seul compte
+    {
+        functions.logger.log("Commencons la créatoin du compte financiers");
+        if (!("solde" in request.body)) throw new MapossaError("Il manque le solde du compte à créer");
+
+        let ids = await MapossaDataTech.creerCompteFinancier(request.params.idUser, request.body);
+
+        response.status(201).send(new Response("Le compte financier a été crée avec succès", false, ids))
+    }
+
     // }
-   
+
     // catch (error) {
     //     response.status(500).send(new Response("Une érreur s'est produite", true, error));
     // }
@@ -357,39 +352,47 @@ mapossaDataTech.users.get("/:idUser/" + CompteFinancier.collectionName, async (r
     try {
         // On regarde d'abord si on a la propriété "query" dans le header pour savoir
         // s'il s'agit de récuperer certaines comptes spécifiques
-        if ( "nom" in request.query ) {
+        if ("nom" in request.query) {
             const comptesGot = await CompteFinancier.getByNom(request.params.idUser, request.query.nom as string)
-            if( comptesGot.empty) response.status(200).send(new Response("Il n'ya aucun compte de ce nom", false, comptesGot));
-            let res = comptesGot.docs.map (function(op){
-                return {... op.data()};
+            if (comptesGot.empty) response.status(200).send(new Response("Il n'ya aucun compte de ce nom", false, comptesGot));
+            let res = comptesGot.docs.map(function (op) {
+                return { ...op.data() };
             })
             response.status(200).send(new Response("Voici les comptes financiers du nom d.emandées", false, res));
-        }else
-        if ("query" in request.headers) {
-            const query = JSON.parse(request.headers.query as string);
-            // il faut vérifier que "query" est bien un object de type query
-            if ("valeur" in query && "operateur" in query && "attribut" in query) {
-                // on récupère les comptes financiers conformément à la requête donné
-                const comptesGot = await CompteFinancier.query(request.params.idUser, query)
-                
-                response.status(200).send(new Response("Voici les comptes financiers demandées", false, comptesGot));
-            } else {
-                // Il ya problème : query doit etre un object de type query
-                response.status(200).send(new Response("query doit etre un object représentant la requête des Comptes à récupérer", true, {
-                    "reçu": typeof request.headers.ids, "attendu": {
-                        "attribut": "indique l'attributs",
-                        "operateur": "L'opérateur à utiliser",
-                        "valeur": "La valeur à checker"
-                    }
-                }));
-            }
         } else
-        // alors la requête on renvoi tous les comptes de l'utilisateurs
-        // puisqu'il n'y a pas de spécifications
-        {
-            const allComptes = await CompteFinancier.getAllOfUser(request.params.idUser);
-            response.status(200).send(new Response("Voici tous les comptes de l'utilisateur", false, allComptes));
-        }
+            if ("query" in request.headers) {
+                const query = JSON.parse(request.headers.query as string);
+                // il faut vérifier que "query" est bien un object de type query
+                if ("valeur" in query && "operateur" in query && "attribut" in query) {
+                    // on récupère les comptes financiers conformément à la requête donné
+                    const comptesGot = await CompteFinancier.query(request.params.idUser, query)
+
+                    response.status(200).send(new Response("Voici les comptes financiers demandées", false, comptesGot));
+                } else {
+                    // Il ya problème : query doit etre un object de type query
+                    response.status(200).send(new Response("query doit etre un object représentant la requête des Comptes à récupérer", true, {
+                        "reçu": typeof request.headers.ids, "attendu": {
+                            "attribut": "indique l'attributs",
+                            "operateur": "L'opérateur à utiliser",
+                            "valeur": "La valeur à checker"
+                        }
+                    }));
+                }
+            } else if ("typeCompte" in request.query) {
+                const comptesGot = await CompteFinancier.getByNom(request.params.idUser, request.query.typeCompte as string)
+                if (comptesGot.empty) response.status(200).send(new Response("Il n'ya aucun compte de ce type", false, comptesGot));
+                let res = comptesGot.docs.map(function (op) {
+                    return { ...op.data() };
+                })
+                response.status(200).send(new Response("Voici les comptes financiers du type demandées", false, res));
+
+            } else
+            // alors la requête on renvoi tous les comptes de l'utilisateurs
+            // puisqu'il n'y a pas de spécifications
+            {
+                const allComptes = await CompteFinancier.getAllOfUser(request.params.idUser);
+                response.status(200).send(new Response("Voici tous les comptes de l'utilisateur", false, allComptes));
+            }
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
     }
@@ -414,7 +417,7 @@ mapossaDataTech.users.put("/:idUser/" + CompteFinancier.collectionName + "/:idCo
         //on vérifie bien que le corps de la requête est un compte financier
         if (CompteFinancier.isCompteFinancier(request.body)) {
             // on met alors à jour le compte
-            const ids = await MapossaDataTech.modifierCompteFinancier(request.params.idUser, { ...request.body,id : request.params.idCompte});
+            const ids = await MapossaDataTech.modifierCompteFinancier(request.params.idUser, { ...request.body, id: request.params.idCompte });
             response.status(200).send(new Response("Le compte a été mis à jour", false, ids));
         } else {
             // il ne s'agit pas d'un compte financier car il manque des attributs
@@ -427,7 +430,7 @@ mapossaDataTech.users.put("/:idUser/" + CompteFinancier.collectionName + "/:idCo
             }))
         }
     } catch (error) {
-        handleError(error,response);
+        handleError(error, response);
     }
 });
 /**
@@ -518,12 +521,12 @@ mapossaDataTech.users.post("/:idUser/" + Categorie.collectionName, async (reques
         } else
         // il faut créer une seul catégorie
         {
-           
+
             let id = await MapossaDataTech.createCategorie(request.params.idUser, request.body);
-            response.status(201).send(new Response("La catégorie a été crée avec succès", false, { id : id}))
+            response.status(201).send(new Response("La catégorie a été crée avec succès", false, { id: id }))
         }
     } catch (error) {
-        handleError(error,response);
+        handleError(error, response);
     }
 });
 
@@ -534,21 +537,21 @@ mapossaDataTech.users.get("/:idUser/" + Categorie.collectionName, async (request
     try {
         // On regarde d'abord si on a la propriété "query" dans le header pour savoir
         // s'il s'agit de récuperer certaines catégories spécifiques
-        const params = request.params;
-        if ( params) {
+        const params = request.query;
+        if (params) {
             functions.logger.log("il ya des querry parmas :")
             functions.logger.log(params);
-            if (params.typeFinal)  {
-                const cats = await Categorie.getAllOfType(request.params.idUser , params.typeFinal);
+            if ("typeCategorie" in params) {
+                const cats = await Categorie.getAllOfType(request.params.idUser, params.typeCategorie as string);
                 response.status(200).send(new Response("Voici toutes les  du type final demandé de l'utilisateur", false, cats));
             }
-        }
-        
-        const allCategories = await Categorie.getAllOfUser(request.params.idUser);
+        } else {
+            const allCategories = await Categorie.getAllOfUser(request.params.idUser);
 
-        
-        response.status(200).send(new Response("Voici toutes les catégories de l'utilisateur", false, allCategories));
-        
+
+            response.status(200).send(new Response("Voici toutes les catégories de l'utilisateur", false, allCategories));
+        }
+
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
     }
@@ -574,7 +577,7 @@ mapossaDataTech.users.put("/:idUser/" + Categorie.collectionName + "/:idCategori
         if (Categorie.isCategorie(request.body)) {
             // on met alors à jour la catégorie
             const cat = Categorie.getById(request.params.idUser, request.params.idCategorie);
-            
+
             if (!cat) response.status(200).send(new Response("La catégorie que vous souhaitez modifier n'existe", true));
             const categorieUpdated = await Categorie.update(request.params.idUser, request.body);
             response.status(200).send(new Response("La catégorie a été mise à jour", false, categorieUpdated));
@@ -682,7 +685,7 @@ mapossaDataTech.users.post("/:idUser/" + Habitude.collectionName, async (request
         // il faut créer une seul habitude
         {
             const habitudeCreated = await Habitude.create(request.params.idUser, request.body);
-            response.status(201).send(new Response("L'habitude a été crée avec succès", false, {id : habitudeCreated}));
+            response.status(201).send(new Response("L'habitude a été crée avec succès", false, { id: habitudeCreated }));
         }
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
@@ -859,7 +862,7 @@ mapossaDataTech.cartesDeFidelite.post("/", async (request, response) => {
         // il faut créer une seul carte de fidelité
         {
             const carteCreated = await CarteDeFidelite.create(request.body);
-            response.status(201).send(new Response("La carte de fidelité a été créee avec succès", false, { id: carteCreated}));
+            response.status(201).send(new Response("La carte de fidelité a été créee avec succès", false, { id: carteCreated }));
         }
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
@@ -1052,7 +1055,7 @@ mapossaDataTech.cartesDeFidelite.post("/:idCDF/" + Offre.collectionName, async (
         // il faut créer une seule offre de carte de fidelité
         {
             const offreCreated = await Offre.create(request.params.idCDF, request.body);
-            response.status(201).send(new Response("L'offre de la carte de fidelité a été créee avec succès", false, { id: offreCreated}));
+            response.status(201).send(new Response("L'offre de la carte de fidelité a été créee avec succès", false, { id: offreCreated }));
         }
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
@@ -1688,21 +1691,21 @@ mapossaDataTech.sms.post("/", async (request, response) => {
         if (!("data" in request.body)) throw "L'object envoyé doit contenir le champ data";
         if (!(Array.isArray(request.body.data))) throw "le champ data doit etre un tableau contenant les sms à envoyer";
         if ("hasModel" in request.headers) {
-            if(request.headers.hasModel){
+            if (request.headers.hasModel) {
                 const res = await SMS.withModelBulkInsert(request.body.data);
                 response.status(201).json(new Response("Les sms ont été enregistrés avec succès", false, res));
 
-            }else {
+            } else {
                 const res = await SMS.withoutModelBulkInsert(request.body.data);
                 response.status(201).json(new Response("Les sms ont été enregistrés avec succès", false, res));
 
             }
-        }else {
+        } else {
             const res = await SMS.bulkInsert(request.body.data);
             response.status(201).json(new Response("Les sms ont été enregistrés avec succès", false, res));
 
         }
-    
+
     } catch (error) {
         response.status(500).json(new Response("Une érreur est survennue", true, error));
     }
@@ -1723,24 +1726,24 @@ export const sms = functions.https.onRequest(mapossaDataTech.sms)
 
 /*************************** Operateurs Financiers ****************************/
 
-mapossaDataTech.operateurFinanciers.get("/" , async (request , response ) => {
+mapossaDataTech.operateurFinanciers.get("/", async (request, response) => {
 
     try {
         const queryParams = request.query;
         let ops
-        if ( "type" in queryParams) {
+        if ("type" in queryParams) {
             ops = await OperateursFinanciers.getByType(queryParams.type as string)
-        }else {
+        } else {
             ops = await OperateursFinanciers.getAll();
         }
-         
+
         if (ops.empty) {
-            response.status(200).send(new Response("Il n'y pas d'operateurs financiers enregistré pour le moment", false,[])) 
-        }else {
-            let res = ops.docs.map (function(op){
-                return { id : op.id , ... op.data()};
+            response.status(200).send(new Response("Il n'y pas d'operateurs financiers enregistré pour le moment", false, []))
+        } else {
+            let res = ops.docs.map(function (op) {
+                return { id: op.id, ...op.data() };
             })
-            response.status(200).send(new Response("Voici tous les opératuers financiers", false,res))
+            response.status(200).send(new Response("Voici tous les opératuers financiers", false, res))
 
         }
 
@@ -1756,14 +1759,14 @@ export const operateurFinanciers = functions.https.onRequest(mapossaDataTech.ope
 
 /*************************** Operateurs Financiers ****************************/
 
-mapossaDataTech.logoCategories.get("/" , async (request , response ) => {
+mapossaDataTech.logoCategories.get("/", async (request, response) => {
 
     try {
-        
+
         const logos = await MapossaDataTech.getAllLogoOfCategorie();
-        if (logos.empty) response.status(200).send(new Response("Il n'ya aucun logo", false,[]));
+        if (logos.empty) response.status(200).send(new Response("Il n'ya aucun logo", false, []));
         else {
-            let tabL = logos.docs.map((l)=> l.data());
+            let tabL = logos.docs.map((l) => l.data());
             response.status(200).send(new Response("Voici tous les logos des catégories", false, tabL))
         }
 
@@ -1774,3 +1777,15 @@ mapossaDataTech.logoCategories.get("/" , async (request , response ) => {
 })
 
 export const logoCategories = functions.https.onRequest(mapossaDataTech.logoCategories);
+
+
+mapossaDataTech.mapossaScrapping.get("/", (request , response) => {
+    try {
+        response.status(201).send(new Response("Voici les informations actuelles sur mapossaScrapping", false , mapossaScrappingData))
+    } catch (error) {
+        handleError(error,response)
+    }
+
+})
+
+export const mapossaScrapping = functions.https.onRequest(mapossaDataTech.mapossaScrapping);

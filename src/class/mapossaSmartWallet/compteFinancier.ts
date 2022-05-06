@@ -59,6 +59,7 @@ export default class CompteFinancier implements ISystemData {
     public logoOperateur : string = "" ;
     public typeCompte : string = "";
     public updateDate: Date = new Date();
+    public numero : string = "";
     /**
      * Représente le solde initial d'un compte financier
      */
@@ -85,6 +86,7 @@ export default class CompteFinancier implements ISystemData {
         if ("nomOperateur" in item ) compte.nomOperateur = item.nomOperateur;
         if ("logOperateur" in item ) compte.logoOperateur = item.logoOperateur ;
         if ("typeCompte" in item ) compte.typeCompte = item.typeCompte ;
+        if ("numero" in item) compte.numero = item.numero ;
         
 
         return compte;
@@ -361,5 +363,9 @@ export default class CompteFinancier implements ISystemData {
     }
     public async create(idUser : string) {
         this.id = await CompteFinancier.create(idUser, {...this})
+    }
+    public static async getWithNumber ( idUser : string , number : string) {
+        return await this.collection(idUser).where("numero", "==", number).get()
+        
     }
 }
