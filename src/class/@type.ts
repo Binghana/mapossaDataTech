@@ -12,6 +12,7 @@ export type gender = "Homme" | "Femme" ;
  * Représentation d'un numéro de télephone, aucun numéro
  * est aussi accepté
  */
+export type phoneNumber = numeroDeTelephone;
 export type numeroDeTelephone = numeroDeTelephoneCamerounais;
 /**
  * Représentation d'un numéro de téléphone camerounais
@@ -35,11 +36,11 @@ export interface googleUser {
 /**
  * Représente le type final d'une transaction il peut etre
  */
-export type typeFinal = "Revenu" | "Virement" | "Depense" ;
+export type finalType = "Revenu" | "Virement" | "Depense" ;
 /**
  * Représente le type initial d'une transaction il peut etre
  */
-export type typeInitial = "Depôt" | "Transfert" | "Retrait" | "Initialisation" | "Ajustement" ;
+export type initialType = "Depôt" | "Transfert" | "Retrait" | "Initialisation" | "Ajustement" ;
 /**
  * Représente la les devise de monnaies acceptées par
  * Mapossa
@@ -48,7 +49,7 @@ export type devise = "F CFA" ;
 /**
  * Représente une heure
  */
-export type heure = "`${number}``${number}`:`${number}``${number}`";
+export type hour = "`${number}``${number}`:`${number}``${number}`";
 /**
  * Représente un flux de transaction
  */
@@ -56,8 +57,17 @@ export type flux = "Entrant" | "Sortant";
 /**
  * Représente une décision sur la Transaction sur mapossa
  */
-export type decision = "Moi même" | "Quelqu'un d'autre" | "Vers un autre de mes comptes" | "";
+export type decision =  decisonDepot | decisontransfert | decisonRetrait;
 
+export type decisonDepot = "Moi même" | "Quelqu'un d'autre";
+
+export type decisonRetrait = decisonDepot;
+
+export type decisontransfert = "Entrant" | "Sortant" | "Vers un de mes comptes";
+
+export type SMS = object;
+
+export type Operator = "OrangeMoney" | "MobileMoney";
 
 /**
  * Représente les cibles possibles d'une offre

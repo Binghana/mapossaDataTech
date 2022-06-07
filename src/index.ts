@@ -1,8 +1,6 @@
 import * as functions from "firebase-functions";
 import * as express from "express";
-import { auth, handleError } from "./class/@interface";
-
-
+import { auth, handleError, scrapingMessaging } from "./class/@interface";
 
 import Response from "./class/response";
 import IntentionEncaissement from "./class/mapossaBusiness/intentionEncaissement";
@@ -18,10 +16,10 @@ import Produit from "./class/mapossaBusiness/produit";
 import Commande from "./class/mapossaBusiness/commande";
 import SMS from "./class/sms/SMS";
 import MapossaDataTech from "./class/mapossaDataTech";
-import MapossaError from "./class/mapossaError";
 import OperateursFinanciers from "./class/operateurs/OperateursFinanciers";
 
 import mapossaScrappingData from "./mapossaScrapping/metaData";
+import ClientError from "./ErrorFromClient/ClientError";
 
 
 
@@ -35,7 +33,9 @@ const mapossaDataTech = {
     sms: express(),
     operateurFinanciers: express(),
     logoCategories: express(),
-    mapossaScrapping : express()
+    mapossaScrapping: express(),
+    clientErrors: express(),
+    scraping: express(),
 };
 
 
@@ -45,7 +45,36 @@ const mapossaDataTech = {
  */
 mapossaDataTech.users.post("/", async (request, response) => {
     try {
-        const usr = await User.create(request.body)
+        const usr = await User.create(request.body);
+        const userNotifToken = request.body.notificationToken;
+
+        await Categorie.createCategorieAuto(usr.id)
+
+
+        if (userNotifToken) {
+            /**
+         * data?: {
+                [key: string]: string;
+            };
+            notification?: Notification;
+            android?: AndroidConfig;
+            webpush?: WebpushConfig;
+            apns?: ApnsConfig;
+            fcmOptions?: FcmOptions;
+        */
+
+            const message = {
+                notification: {
+                    "title": "Confirmez votre adresse email",
+                    'body': "Nous vous avons envoyé un email de vérification. Consultez votre boite de réception et cliquez sur le lien pour confirmer votre adresse email."
+                },
+                token: userNotifToken
+            }
+            await scrapingMessaging.send(message)
+
+        }
+
+
         response.status(201).send(new Response("Le compte utilisateur a été crée avec succès", false, usr));
     } catch (error) {
         handleError(error, response);
@@ -57,13 +86,16 @@ mapossaDataTech.users.post("/", async (request, response) => {
  */
 mapossaDataTech.users.get("/", async (request, response) => {
     try {
-        if (!("email" in request.query)) response.send(new Response("Il manque l'email de l'utilisateur comme dans les query params", true))
-        const user = (await auth.getUserByEmail(request.query.email as string))
-        const ruser = await User.getById(user.uid)
-        response.send(new Response("Voici l'user id de l'utilisateur", false, ruser))
+        if (("email" in request.query)) {
+            const user = (await auth.getUserByEmail(request.query.email as string))
+            const ruser = await User.getById(user.uid)
+            response.send(new Response("Voici l'user id de l'utilisateur", false, ruser))
+        }
+        const users = await User.collection().get();
+        response.send(new Response("Voici tous les utilisateurs", true, users.docs))
 
     } catch (error) {
-        response.status(500).send(new Response("Une erreur est surveunue lors de la récupération", true, error));
+        response.status(500).send(new Response("Une erreur est survenue lors de la récupération", true, error));
     }
 
 });
@@ -89,15 +121,16 @@ mapossaDataTech.users.put("/", async (request, response) => {
  */
 mapossaDataTech.users.get("/:id", async (request, response) => {
     try {
-
-        response.send(await User.getById(request.params.id))
+        const res = await User.getById(request.params.id);
+        if (!res.exists) response.send(new Response("L'identifiant de l'utilisateur entré n'existe pas veuillez vérifiez l'uid", true));
+        response.send(new Response("Voici les informations de l'utilisateur", false, res.data()))
     } catch (error) {
         response.status(500).send(new Response("Une erreur est surveunue lors de la récupération", true, error));
     }
 
 });
 /**
- * Mettre à jour les innformations d'un utilisateur
+ * Mettre à jour les informations d'un utilisateur
  */
 mapossaDataTech.users.put("/:id", async (request, response) => {
     try {
@@ -133,39 +166,49 @@ mapossaDataTech.users.delete("/:id", async (request, response) => {
  */
 mapossaDataTech.users.post("/:idUser/" + Transaction.collectionName, async (request, response) => {
 
+    const idUser = request.params.idUser;
     try {
         // Si le corps de la requête contient un tableau alors il s'agit de créer
         // plusieurs transactions à la fois
+        if (("source" in request.query) && (request.query.source == "scraping")) {
+
+            if (!("transactions" in request.body)) {
+                return response.status(401).send(new Response("The 'transactions' attribute representing the scraped transactions to be saved is missing", true));
+            }
+
+            const result = await Transaction.bulkCreate(idUser, request.body.transactions);
+
+            return response.status(200).send(new Response("The scraped transactions have been saved successfully", false, result));
+        }
+
         if ("transactions" in request.body) {
             //  Création de plusieurs Transactions à la fois
+
             functions.logger.log("créons les transactions");
             await MapossaDataTech.bulkCreateTransactionAuto(request.params.idUser, request.body.transactions);
 
-            response.status(201).send(new Response("Les transactions ont été créees avec succès", false));
+            return response.status(201).send(new Response("Les transactions ont été créees avec succès", false));
         } else {
             //  ll s'agit de créer une seule transaction 
             //  Création d'une Transaction d'un utilisateur
-            if ("idCompte" in request.body) {
-                if (request.body.idCompte) {
+            if ("accountId" in request.body) {
 
-                    if ("idcomptedest" in request.headers) {
-                        let ids = await MapossaDataTech.creerTransactionVirement(request.params.idUser, request.body, request.headers.idcomptedest as string)
-                        response.status(201).send(new Response("la transaction de virement a été crée avec succès", false, ids));
+                if ("idcomptedest" in request.headers) {
+                    let ids = await MapossaDataTech.creerTransactionVirement(request.params.idUser, request.body, request.headers.idcomptedest as string)
+                    return response.status(201).send(new Response("la transaction de virement a été crée avec succès", false, ids));
 
-                    } else {
-                        let ids = await MapossaDataTech.creerTransaction(request.params.idUser, request.body)
-                        response.status(201).send(new Response("la transaction a été crée avec succès", false, ids));
-                    }
                 } else {
-                    response.status(403).send(new Response("Il le champ 'idCompte' de la transaction est vie ou invalide", true));
+                    let ids = await MapossaDataTech.creerTransaction(request.params.idUser, request.body)
+                    return response.status(201).send(new Response("la transaction a été crée avec succès", false, ids));
                 }
+
             } else {
-                response.status(403).send(new Response("Il manque le champ 'idCompte' de la transaction", true));
+                return response.status(403).send(new Response("Il manque le champ 'accountId' de la transaction", true));
 
             }
         }
     } catch (error) {
-        handleError(error, response)
+        return handleError(error, response)
     }
 });
 /**
@@ -174,7 +217,7 @@ mapossaDataTech.users.post("/:idUser/" + Transaction.collectionName, async (requ
 mapossaDataTech.users.get("/:idUser/" + Transaction.collectionName + "/:idTransaction", async (request, response) => {
     try {
         const transaction = await Transaction.getById(request.params.idUser, request.params.idTransaction);
-        response.status(201).send(new Response("Voici la Transaction demandé", false, transaction));
+        response.status(201).send(new Response("Voici la Transaction demandé", false, transaction.data()));
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
     }
@@ -183,37 +226,41 @@ mapossaDataTech.users.get("/:idUser/" + Transaction.collectionName + "/:idTransa
  * Récupération de plusieurs transactions d'un utilisateur
  */
 mapossaDataTech.users.get("/:idUser/" + Transaction.collectionName, async (request, response) => {
-
+    const idUser = request.params.idUser;
     try {
         // On regarde d'abord si on a la propriété "query" dans le header pour savoir
         // s'il s'agit de récuperer certaines transactions spécifiques
-        if ("query" in request.headers) {
-            const query = JSON.parse(request.headers.query as string)
-            // il faut vérifier qqe "query" est un object de type query
-            if ("valeur" in query && "operateur" in query && "attribut" in query) {
-                // on récupère les transactions conformément à la requête
-                const transactionsGot = await Transaction.query(request.params.idUser, query)
-                response.status(200).send(new Response("Voici les Transactions demandées", false, transactionsGot));
-            } else {
-                // Il ya problème : query doit etre un object de type query
-                response.status(200).send(new Response("query doit etre un object représentant la requête des transactions à récupérer", true, {
-                    "reçu": typeof request.headers.ids, "attendu": {
-                        "attribut": "indique l'attributs",
-                        "operateur": "L'opérateur à utiliser",
-                        "valeur": "La valeur à checker"
-                    }
-                }));
+        if (("source" in request.query) && (request.query.source == "scraping-unknown")) {
+
+            const all: any[] = (await Transaction.collection(idUser).get()).docs.map((el) => el.data());
+
+            const allUnknow: any[] = all.filter((el) => (("alert" in el && el.alert == true) || el.typeInitial == "" || el.flux == "" || el.montant == null || ("frais" in el && el.frais == null)));
+
+            return response.status(200).send(new Response("Here are the transactions unknown to the users", false, allUnknow))
+
+        }
+        let query: FirebaseFirestore.CollectionReference<Transaction> | FirebaseFirestore.Query<Transaction> = Transaction.collection(request.params.idUser);
+        const queryParams = request.query;
+
+        if (queryParams) {
+            // si il ya des querry params
+
+            for (const param in queryParams) {
+                if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
+                    const value = queryParams[param];
+                    console.log(query)
+                    query = query.where(param, "==", value)
+                    console.log(value)
+                }
             }
-        } else
-        // alors la requête on renvoi toutes les transactions de l'utilisateurs
-        // puisqu'il n'y a pas de spécifications
-        {
-            const allTransactions = await Transaction.getAllOfUser(request.params.idUser);
-            response.status(200).send(new Response("Voici toutes les Transactions de l'utilisateur", false, allTransactions));
+
         }
 
+        const transactions = (await query.get()).docs;
+        console.log(transactions)
+        return response.status(201).send(new Response("Voici les transactions demandés", false, transactions.map((el) => el.data())))
     } catch (error) {
-        response.status(500).send(new Response("Une érreur s'est produite", true, error));
+        return response.status(500).send(new Response("Une érreur s'est produite", true, error));
     }
 });
 /**
@@ -225,16 +272,16 @@ mapossaDataTech.users.put("/:idUser/" + Transaction.collectionName + "/:idTransa
         //on vérifie bien que le corps de la requête est une transaction
         if (Transaction.isTransaction(request.body)) {
             // on met alors à jour la transaction
-            const updatedTransaction = await MapossaDataTech.modifieTransaction(request.params.idUser, request.body, request.params.idTransaction)
+            const updatedTransaction = await MapossaDataTech.updateTransaction(request.params.idUser, request.body, request.params.idTransaction)
             response.status(200).send(new Response("La transaction a été mis à jour", false, updatedTransaction));
         } else {
             // il ne s'agit pas d'une transaction car il manque des attributs
             response.status(200).send(new Response("La transaction est invalide car il manque des attributs crucuax", true, {
                 "obtenu": request.body,
                 "attributsNecessaire": {
-                    "montant": "Indique le montant de la tansaction",
-                    "typeFinal": "Indique le type final de la transaction",
-                    "idCompte": "Indique l'indifiant du compte de la transaction",
+                    "amount": "Indique le montant de la tansaction",
+                    "finalType": "Indique le type final de la transaction",
+                    "accountId": "Indique l'indifiant du compte de la transaction",
                     "flux": "Indique s'il s'agit d'une transaction entrante ou sortante sur le compte",
                     "devise": "Indique la devise de la Transaction"
                 },
@@ -319,82 +366,82 @@ mapossaDataTech.users.delete("/:idUser/" + Transaction.collectionName, async (re
  * Création de Compte financier d'un utilisateur
  */
 mapossaDataTech.users.post("/:idUser/" + CompteFinancier.collectionName, async (request, response) => {
+    const idUser = request.params.idUser;
+    try {
+        // on regarde si le corps de la requête est un tableau pour savoir 
+        // s'il faut créer plusieurs comptes ou pas
+        if (("source" in request.query) && (request.query.source == "scraping")) {
 
-    //try {
-    // on regarde si le corps de la requête est un tableau pour savoir 
-    // s'il faut créer plusieurs comptes ou pas
-    if (Array.isArray(request.body)) {
-        // alors on doit créer pulsieurs comptes
-        const comptesCreated = await CompteFinancier.bulkCreate(request.params.idUser, request.body);
-        response.status(201).send(new Response("Les comptes financiers ont été crées avec succès", false, comptesCreated))
-    } else
-    // il faut créer un seul compte
-    {
-        functions.logger.log("Commencons la créatoin du compte financiers");
-        if (!("solde" in request.body)) throw new MapossaError("Il manque le solde du compte à créer");
+            if (!("comptes" in request.body)) {
+                return response.status(401).send(new Response("The 'comptes' attribute representing the scraped transactions to be saved is missing", true));
+            }
 
-        let ids = await MapossaDataTech.creerCompteFinancier(request.params.idUser, request.body);
+            const result = await CompteFinancier.bulkCreate(idUser, request.body.comptes)
 
-        response.status(201).send(new Response("Le compte financier a été crée avec succès", false, ids))
+            return response.status(200).send(new Response("The scraped account have been saved successfully", false, result));
+        }
+        if ("comptes" in request.body) {
+            // alors on doit créer pulsieurs comptes
+            const comptesCreated = await CompteFinancier.bulkCreate(request.params.idUser, request.body);
+            return response.status(201).send(new Response("Les comptes financiers ont été crées avec succès", false, comptesCreated))
+        } else
+        // il faut créer un seul compte
+        {
+            functions.logger.log("Commencons la créatoin du compte financiers");
+            if (!("solde" in request.body)) response.status(400).send(new Response("Il manque le solde du compte dans le corps de la requête", true));
+
+            let ids = await MapossaDataTech.creerCompteFinancier(request.params.idUser, request.body);
+
+            return response.status(201).send(new Response("Le compte financier a été crée avec succès", false, ids))
+        }
+
     }
 
-    // }
-
-    // catch (error) {
-    //     response.status(500).send(new Response("Une érreur s'est produite", true, error));
-    // }
+    catch (error) {
+        return handleError(error, response)
+    }
 });
 
 /**
  * Récupération d'un certains nombre de Comptes d'un utilisateur
  */
 mapossaDataTech.users.get("/:idUser/" + CompteFinancier.collectionName, async (request, response) => {
+    const idUser = request.params.idUser;
     try {
         // On regarde d'abord si on a la propriété "query" dans le header pour savoir
         // s'il s'agit de récuperer certaines comptes spécifiques
-        if ("nom" in request.query) {
-            const comptesGot = await CompteFinancier.getByNom(request.params.idUser, request.query.nom as string)
-            if (comptesGot.empty) response.status(200).send(new Response("Il n'ya aucun compte de ce nom", false, comptesGot));
-            let res = comptesGot.docs.map(function (op) {
-                return { ...op.data() };
-            })
-            response.status(200).send(new Response("Voici les comptes financiers du nom d.emandées", false, res));
-        } else
-            if ("query" in request.headers) {
-                const query = JSON.parse(request.headers.query as string);
-                // il faut vérifier que "query" est bien un object de type query
-                if ("valeur" in query && "operateur" in query && "attribut" in query) {
-                    // on récupère les comptes financiers conformément à la requête donné
-                    const comptesGot = await CompteFinancier.query(request.params.idUser, query)
+        // On regarde d'abord si on a la propriété "query" dans le header pour savoir
+        // s'il s'agit de récuperer certaines transactions spécifiques
 
-                    response.status(200).send(new Response("Voici les comptes financiers demandées", false, comptesGot));
-                } else {
-                    // Il ya problème : query doit etre un object de type query
-                    response.status(200).send(new Response("query doit etre un object représentant la requête des Comptes à récupérer", true, {
-                        "reçu": typeof request.headers.ids, "attendu": {
-                            "attribut": "indique l'attributs",
-                            "operateur": "L'opérateur à utiliser",
-                            "valeur": "La valeur à checker"
-                        }
-                    }));
+        if (("source" in request.query) && (request.query.source == "scraping")) {
+
+
+            const result = (await CompteFinancier.collection(idUser).where("isAuto", "==", true).get()).docs;
+
+            return response.status(200).send(new Response("Here is the scraped account ", false, result));
+        }
+        let query: FirebaseFirestore.CollectionReference<CompteFinancier> | FirebaseFirestore.Query<CompteFinancier> = CompteFinancier.collection(request.params.idUser);
+        const queryParams = request.query;
+
+        if (queryParams) {
+            // si il ya des querry params
+
+            for (const param in queryParams) {
+                if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
+                    const value = queryParams[param];
+                    query = query.where(param, "==", value)
+                    console.log(param)
+                    console.log(value)
                 }
-            } else if ("typeCompte" in request.query) {
-                const comptesGot = await CompteFinancier.getByNom(request.params.idUser, request.query.typeCompte as string)
-                if (comptesGot.empty) response.status(200).send(new Response("Il n'ya aucun compte de ce type", false, comptesGot));
-                let res = comptesGot.docs.map(function (op) {
-                    return { ...op.data() };
-                })
-                response.status(200).send(new Response("Voici les comptes financiers du type demandées", false, res));
-
-            } else
-            // alors la requête on renvoi tous les comptes de l'utilisateurs
-            // puisqu'il n'y a pas de spécifications
-            {
-                const allComptes = await CompteFinancier.getAllOfUser(request.params.idUser);
-                response.status(200).send(new Response("Voici tous les comptes de l'utilisateur", false, allComptes));
             }
+
+        }
+
+        const comptes = (await query.get()).docs;
+
+        return response.status(201).send(new Response("Voici les Comptes demandés", false, comptes.map((el) => el.data())));
     } catch (error) {
-        response.status(500).send(new Response("Une érreur s'est produite", true, error));
+        return response.status(500).send(new Response("Une érreur s'est produite", true, error));
     }
 });
 /**
@@ -537,20 +584,25 @@ mapossaDataTech.users.get("/:idUser/" + Categorie.collectionName, async (request
     try {
         // On regarde d'abord si on a la propriété "query" dans le header pour savoir
         // s'il s'agit de récuperer certaines catégories spécifiques
-        const params = request.query;
-        if (params) {
-            functions.logger.log("il ya des querry parmas :")
-            functions.logger.log(params);
-            if ("typeCategorie" in params) {
-                const cats = await Categorie.getAllOfType(request.params.idUser, params.typeCategorie as string);
-                response.status(200).send(new Response("Voici toutes les  du type final demandé de l'utilisateur", false, cats));
+        let query: FirebaseFirestore.CollectionReference<Categorie> | FirebaseFirestore.Query<Categorie> = Categorie.collection(request.params.idUser);
+        const queryParams = request.query;
+
+        if (queryParams) {
+            // si il ya des querry params
+
+            for (const param in queryParams) {
+                if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
+                    const value = queryParams[param];
+                    query = query.where(param, "==", value)
+                    console.log(value)
+                }
             }
-        } else {
-            const allCategories = await Categorie.getAllOfUser(request.params.idUser);
 
-
-            response.status(200).send(new Response("Voici toutes les catégories de l'utilisateur", false, allCategories));
         }
+
+        const categories = (await query.get()).docs;
+
+        response.status(201).send(new Response("Voici les Categories demandés", false, categories.map((el) => el.data())));
 
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
@@ -1779,13 +1831,35 @@ mapossaDataTech.logoCategories.get("/", async (request, response) => {
 export const logoCategories = functions.https.onRequest(mapossaDataTech.logoCategories);
 
 
-mapossaDataTech.mapossaScrapping.get("/", (request , response) => {
+mapossaDataTech.mapossaScrapping.get("/", (request, response) => {
     try {
-        response.status(201).send(new Response("Voici les informations actuelles sur mapossaScrapping", false , mapossaScrappingData))
+        response.status(201).send(new Response("Voici les informations actuelles sur mapossaScrapping", false, mapossaScrappingData))
     } catch (error) {
-        handleError(error,response)
+        handleError(error, response)
     }
 
 })
 
 export const mapossaScrapping = functions.https.onRequest(mapossaDataTech.mapossaScrapping);
+
+mapossaDataTech.clientErrors.post("/", async (request, response) => {
+
+    try {
+        await ClientError.saveClientError(request.body);
+
+        response.status(201).send(new Response("Nous avons bien reçu le problème", false))
+
+    } catch (error) {
+        handleError(error, response)
+    }
+})
+
+export const clientErrors = functions.https.onRequest(mapossaDataTech.clientErrors)
+
+mapossaDataTech.scraping.post("/", (request, response) => {
+
+})
+
+
+
+export const scraping = functions.https.onRequest(mapossaDataTech.scraping);

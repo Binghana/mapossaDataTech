@@ -3,15 +3,24 @@
  * interagissent avec une collection
  */
 import * as admin from "firebase-admin";
-import { logger } from "firebase-functions/v1";
+
 import MapossaError from "./mapossaError";
 import Response from "./response";
 import User from "./user";
 
+const scrapingCredentials = {
 
+
+    databaseURL: 'mapossadatatech.firebaseapp.com',
+    storageBucket: 'mapossadatatech.appspot.com',
+    //messagingSenderId: '462737693135',
+    projectId: 'mapossadatatech',
+
+};
 
 admin.initializeApp();
 
+const scrapingApp = admin.initializeApp(scrapingCredentials, "Mapossa Scraping")
 /**
  * Représente notre base de données FireStore
  */
@@ -21,7 +30,7 @@ dataBase.settings({ignoreUndefinedProperties : true});
 
 
 export const auth = admin.auth();
-
+export const scrapingMessaging = admin.messaging(scrapingApp)
 /**
    * Cette fonction indique le chemin vers la patie concernant l'utilisateur
    * @param idUser Indique l'identifiant de l'utilisateur acturele
@@ -146,12 +155,12 @@ export interface ISystemData {
 
 
 // }
-export function handleError(error : unknown, response : any) {
-    logger.log(error);
+export function handleError(error : any, response : any) {
+    console.log(error);
     
     if (error instanceof MapossaError) {
         response.status(401).send(new Response(error.message, true, error.data));
     } else {
-        response.status(500).send(new Response("Une érreur s'est produite", true, error));
+        response.status(500).send(new Response("Une érreur s'est produite", true, JSON.stringify(error)));
     }
 }

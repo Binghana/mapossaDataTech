@@ -1,7 +1,8 @@
-import { auth } from "./@interface";
-import { logger } from "firebase-functions/v1";
+
+
 //import CarteDeFidelite from "./mapossaBusiness/carteDeFidelite";
 //import Offre from "./mapossaBusiness/offre";
+import { initialType } from "./@type";
 import MapossaError from "./mapossaError";
 import Categorie from "./mapossaSmartWallet/categorie";
 //import Categorie from "./mapossaSmartWallet/categorie";
@@ -25,32 +26,36 @@ export default class MapossaDataTech {
      */
     public static async creerTransaction(idUser: string, transaction: any) {
         // "montant" in prototype && "typeFinal" in prototype && "idCompte" in prototype  && "flux" in prototype
-        if (!(Transaction.isTransaction(transaction))) throw new MapossaError("La transaction créer n'est pas valide car il manqque : un des 4 attributs idCompte, typeFinal,montant ou flux", transaction);
-        logger.log(idUser);
-        logger.log(transaction);
-        const c = await CompteFinancier.getById(idUser, transaction.idCompte as string);
+        if (!(Transaction.isTransaction(transaction))) throw new MapossaError("La transaction créer n'est pas valide car il manqque : un des 4 attributs accountId, finaltype,amount ou flux", transaction);
+        console.log(idUser);
+        console.log(transaction);
+        const c = await CompteFinancier.getById(idUser, transaction.accountId as string);
 
         if (!c.exists) throw new Error("Le compte de la transaction que l'on souhaite créer n'existe ");
 
         const compte = c.data() as CompteFinancier;
 
         if (transaction.flux == "Sortant") {
-            await compte.retirer(idUser, transaction.montant);
+            await compte.retirer(idUser, transaction.amount as number);
         } else if (transaction.flux == "Entrant") {
-            await compte.deposer(idUser, transaction.montant);
+            await compte.deposer(idUser, transaction.amount as number);
         } else {
             throw new Error("La transaction que l'on souhaite créer a un flux invalide");
         }
 
-        if (!(transaction instanceof Transaction)) transaction = Transaction.normalize(transaction);
-        await transaction.create(idUser);
+        let currentTransaction : Transaction; 
+        if (!(transaction instanceof Transaction)) {currentTransaction = Transaction.normalize(transaction)}
+        else {
+            currentTransaction = transaction;
+        };
+        await currentTransaction.create(idUser);
 
         const ids: {
             idMere: string,
             idFrais?: string
-        } = { idMere: transaction.id as string };
+        } = { idMere: currentTransaction.id as string };
 
-        if ("frais" in transaction && transaction.frais > 0) ids.idFrais = await transaction.createFrais(idUser);
+        if ( currentTransaction.fees && currentTransaction.fees > 0) ids.idFrais = await transaction.createFrais(idUser);
 
         return ids;
 
@@ -65,11 +70,11 @@ export default class MapossaDataTech {
     public static async creerTransactionVirement(idUser: string, transaction: any, idCompteDest: string) {
 
         if (!(Transaction.isTransaction(transaction))) throw new MapossaError("La transaction créer n'est pas valide ", transaction);
-        if (!(transaction.typeFinal == "Virement")) throw new MapossaError("Le virement que l'on souhaite créer n'a pas comme type final virement");
+        if (!(transaction.finalType == "Virement")) throw new MapossaError("Le virement que l'on souhaite créer n'a pas comme type final virement");
 
-        // logger.log(idUser);
-        // logger.log(transaction);
-        const c = await CompteFinancier.getById(idUser, transaction.idCompte as string);
+        // console.log(idUser);
+        // console.log(transaction);
+        const c = await CompteFinancier.getById(idUser, transaction.accountId as string);
         if (!c.exists) throw new MapossaError("Le compte du virement que l'on souhaite créer n'existe pas ");
 
         const cDest = await CompteFinancier.getById(idUser, idCompteDest);
@@ -86,11 +91,11 @@ export default class MapossaDataTech {
 
 
         if (transaction.flux == "Sortant") {
-            compte.retirer(idUser, transaction.montant);
+            compte.retirer(idUser, transaction.amount as number);
             let virement2 = Transaction.normalize(transaction);
-            virement2.idCompte = idCompteDest;
+            virement2.accountId = idCompteDest;
             virement2.flux = "Entrant";
-            virement2.frais = 0;
+            virement2.fees = 0;
             let idsV2 = await MapossaDataTech.creerTransaction(idUser, virement2);
             ids.idFille = idsV2.idMere;
         } else if (transaction.flux == "Entrant") {
@@ -117,6 +122,7 @@ export default class MapossaDataTech {
      * @returns 
      */
     public static async creerCompteFinancier(idUser: string, compte: any) {
+
         if (!CompteFinancier.isCompteFinancier(compte)) throw new MapossaError("Le compte financier envoyé n'est pas valide");
         if ("numero" in compte) {
             const compteSN = await CompteFinancier.getWithNumber(idUser, compte.numero)
@@ -129,12 +135,12 @@ export default class MapossaDataTech {
         compte.sommeSortie = 0;
         compte.soldeInitial = compte.solde;
 
-        await compte.create(idUser);
+        let id = await CompteFinancier.create(idUser, compte)
         const ids: {
             idCompte: string,
             idTransactionInitialisation?: string
         } = {
-            idCompte: compte.id,
+            idCompte: id,
         }
         /**
          * On ne créee plus la transacton d'initialisation
@@ -150,58 +156,71 @@ export default class MapossaDataTech {
         //     transactionInit.create(idUser);
         //     ids.idTransactionInitialisation = transactionInit.id;
         // }
-
+        //CompteFinancier.create(id)
         return ids;
     }
 
 
     public static async modifierCompteFinancier(idUser: string, compte: any) {
-        if (!CompteFinancier.isCompteFinancier(compte)) throw new MapossaError("Le compte financier envoyé n'est pas valide", CompteFinancier);
+        console.log("débutons la mise à jour du compte")
+        if (!("solde" in compte)) throw new MapossaError("Le compte financier envoyé n'est pas valide", CompteFinancier);
         const oldDataCompteRef = await CompteFinancier.getById(idUser, compte.id as string);
-        const newDataCompte = CompteFinancier.normalize(compte);
+
+        const newSolde = compte.solde;
 
         if (!oldDataCompteRef.exists) throw new MapossaError("Le compte que l'on souhaite modifier n'existe pas ");
 
         const oldDataCompte = oldDataCompteRef.data() as CompteFinancier;
-        const diff = oldDataCompte.solde - newDataCompte.solde;
+        console.log("voici les data de l'ancien compte");
+        console.log(oldDataCompte)
+        console.log("voici le nouveau solde compte");
+        console.log(newSolde);
 
-        const ids: {
-            idCompte: string,
-            idTransactionAjustementSolde?: string
-        } = {
-            idCompte: compte.id as string,
-        }
-        newDataCompte.solde = oldDataCompte.solde;
-        newDataCompte.sommeEntree = oldDataCompte.sommeEntree;
-        newDataCompte.sommeSortie = oldDataCompte.sommeSortie
-        newDataCompte.soldeInitial = oldDataCompte.soldeInitial;
+        const diff = oldDataCompte.solde - newSolde;
 
+        if (diff != 0) {
+            console.log("La différence existe, créons la trnasactions d'ajustement")
+            const ids: {
+                idCompte: string,
+                idTransactionAjustementSolde?: string
+            } = {
+                idCompte: compte.id as string,
+            }
+            // newDataCompte.solde = oldDataCompte.solde;
+            // newDataCompte.sommeEntree = oldDataCompte.sommeEntree;
+            // newDataCompte.sommeSortie = oldDataCompte.sommeSortie
+            // newDataCompte.soldeInitial = oldDataCompte.soldeInitial;
 
-        await newDataCompte.update(idUser);
-        if (diff == 0) {
-            // on ne crée pas de transaction d'justement de solde
-        } else if (diff > 0) {
-            const transactionAjustementDeSolde = new Transaction();
-            transactionAjustementDeSolde.montant = Math.abs(diff);
-            transactionAjustementDeSolde.typeInitial = "Ajustement";
-            transactionAjustementDeSolde.typeFinal = "Depense";
-            transactionAjustementDeSolde.flux = "Sortant";
-            transactionAjustementDeSolde.idCompte = oldDataCompte.id;
-            let id = await MapossaDataTech.creerTransaction(idUser, transactionAjustementDeSolde);
-            ids.idTransactionAjustementSolde = id.idMere;
+            await CompteFinancier.update(idUser, { id: oldDataCompte.id, ...compte })
 
+            if (diff > 0) {
+                const transactionAjustementDeSolde = new Transaction();
+                transactionAjustementDeSolde.amount = Math.abs(diff);
+                transactionAjustementDeSolde.initialType = "Ajustement";
+                transactionAjustementDeSolde.finalType = "Depense";
+                transactionAjustementDeSolde.flux = "Sortant";
+                transactionAjustementDeSolde.accountId = oldDataCompte.id;
+                let id = await MapossaDataTech.creerTransaction(idUser, transactionAjustementDeSolde);
+                ids.idTransactionAjustementSolde = id.idMere;
+
+            } else {
+                const transactionAjustementDeSolde = new Transaction();
+                transactionAjustementDeSolde.amount = Math.abs(diff);
+                transactionAjustementDeSolde.initialType = "Ajustement";
+                transactionAjustementDeSolde.finalType = "Revenu";
+                transactionAjustementDeSolde.flux = "Entrant";
+                transactionAjustementDeSolde.accountId = oldDataCompte.id;
+                let id = await MapossaDataTech.creerTransaction(idUser, transactionAjustementDeSolde);
+                ids.idTransactionAjustementSolde = id.idMere;
+            }
+
+            return ids;
         } else {
-            const transactionAjustementDeSolde = new Transaction();
-            transactionAjustementDeSolde.montant = Math.abs(diff);
-            transactionAjustementDeSolde.typeInitial = "Ajustement";
-            transactionAjustementDeSolde.typeFinal = "Revenu";
-            transactionAjustementDeSolde.flux = "Entrant";
-            transactionAjustementDeSolde.idCompte = oldDataCompte.id;
-            let id = await MapossaDataTech.creerTransaction(idUser, transactionAjustementDeSolde);
-            ids.idTransactionAjustementSolde = id.idMere;
+            const newDatacompte = await CompteFinancier.update(idUser, { id: oldDataCompte.id, ...compte })
+
+            return newDatacompte;
         }
 
-        return ids;
     }
 
     public static async suprimeTransaction(idUser: string, idTransaction: string) {
@@ -222,15 +241,15 @@ export default class MapossaDataTech {
         }
 
 
-        let refCompte = await CompteFinancier.getById(idUser, transaction.idCompte as string);
-        if (!refCompte.exists) throw new MapossaError("Le compte de la transaction que l'on souhaite supprimer n'existe pas ", { "idCompteRecu": transaction.idCompte });
+        let refCompte = await CompteFinancier.getById(idUser, transaction.accountId as string);
+        if (!refCompte.exists) throw new MapossaError("Le compte de la transaction que l'on souhaite supprimer n'existe pas ", { "idCompteRecu": transaction.accountId });
         let compte = refCompte.data() as CompteFinancier;
 
         if (transaction.flux = "Entrant") {
-            compte.sommeEntree -= transaction.montant;
+            compte.sommeEntree -= transaction.amount as number;
             compte.updateSolde(idUser);
         } else if (transaction.flux = "Sortant") {
-            compte.sommeEntree -= transaction.montant;
+            compte.sommeEntree -= transaction.amount as number;
             compte.updateSolde(idUser);
         } else {
             throw new MapossaError("Le flux de la transaction que l'on souhaite supprimer n'est pas valide", { "fluxRecu": transaction.flux });
@@ -238,74 +257,129 @@ export default class MapossaDataTech {
         await Transaction.delete(idUser, idTransaction);
     }
 
-    public static async modifieTransaction(idUser: string, bodyTransacion: any, idTransaction: string) {
-        logger.log(bodyTransacion);
+    public static async updateTransaction(idUser: string, bodyTransacion: any, idTransaction: string) {
+
+        console.log(bodyTransacion);
         const refTransaction = await Transaction.getById(idUser, idTransaction);
 
         if (!refTransaction.exists) throw new MapossaError("La transaction que l'on souhaite modifier n'existe pas", { "idRecu": idTransaction });
         let transaction = refTransaction.data() as Transaction;
 
-        if (!Transaction.isTransaction(bodyTransacion)) throw new MapossaError("La transaction que l'on souhaite modifer n'est pas valide", bodyTransacion);
-        if (!(bodyTransacion instanceof Transaction)) bodyTransacion = Transaction.normalize(bodyTransacion);
+        let currentTransaction: Transaction;
+
+        if (!(bodyTransacion instanceof Transaction)) {
+            currentTransaction = Transaction.normalize(bodyTransacion);
+        } else {
+            currentTransaction = bodyTransacion;
+        }
 
 
-        let refCompte = await CompteFinancier.getById(idUser, transaction.idCompte as string);
-        if (!refCompte.exists) throw new MapossaError("Le compte de la transaction que l'on souhaite modifier n'existe pas", { "idCompteRecu": transaction.idCompte });
+        let refCompte = await CompteFinancier.getById(idUser, transaction.accountId as string);
+        if (!refCompte.exists) throw new MapossaError("Le compte de la transaction que l'on souhaite modifier n'existe pas", { "idCompteRecu": transaction.accountId });
         let compte = refCompte.data() as CompteFinancier;
 
-        logger.log("On comence à regarder si la transacion est un virement entrant")
-        if (!(transaction.typeFinal == "Virement" && transaction.flux == "Entrant" && (!("parent" in transaction) || transaction.parent == ""))) {
+        if (currentTransaction.isAuto) {
 
-            logger.log("Bon ce n'est pas un virement entrant");
+            switch (currentTransaction.initialType) {
+                case "Depôt":
+                    switch (currentTransaction.decision) {
+                        case "Moi même":
+                            currentTransaction.finalType == "Virement";
+                            break;
 
-            const trransactionsFilles = await transaction.getAllOf(idUser);
-            logger.log(trransactionsFilles);
-
-            if (!trransactionsFilles.empty) {
-                const promises: Promise<any>[] = [];
-                trransactionsFilles.docs.forEach((t) => {
-                    logger.log("checkons la transaction i");
-                    logger.log(t.data());
-                    if (t.exists) {
-                        if (t.data().typeFinal == "Virement" && t.data().flux == "Entrant") {
-                            let nt = t.data();
-                            nt.montant = transaction.montant;
-                            promises.push(MapossaDataTech.modifieTransaction(idUser, nt, t.id))
-
-                        } else if (t.data().typeFinal == "Depense" && t.data().frais == 0) {
-                            logger.log("On est sur que c'est un frais financier");
-                            let frais = t.data();
-                            logger.log(frais.montant);
-                            logger.log(bodyTransacion.frais);
-                            if (frais.montant != bodyTransacion.frais) {
-                                frais.montant = bodyTransacion.frais;
-                                promises.push(MapossaDataTech.modifieTransaction(idUser, frais, frais.id as string));
-                            }
-
-                        }
+                        case "Quelqu'un d'autre":
+                            currentTransaction.finalType == "Revenu";
+                            break;
                     }
-                })
-                await Promise.all(promises);
+                    break;
+                case "Retrait":
+                    switch (currentTransaction.decision) {
+                        case "Moi même":
+                            currentTransaction.finalType == "Virement";
+                            break;
+
+                        case "Quelqu'un d'autre":
+                            currentTransaction.finalType == "Depense";
+                            break;
+                    }
+                    break;
+                case "Transfert":
+                    switch (currentTransaction.decision) {
+                        case "Entrant":
+                            currentTransaction.finalType == "Revenu";
+                            break;
+                        case "Sortant":
+                            currentTransaction.finalType == "Depense";
+                            break;
+                        case "Vers un de mes comptes":
+                            currentTransaction.finalType == "Virement";
+                            break;
+                    }
+                    break;
             }
-        }
+            if (currentTransaction.finalType == "Virement") {
+                await currentTransaction.createVirement(idUser);
+            }
+            await currentTransaction.createFrais(idUser);
+            await Transaction.update(idUser, currentTransaction);
 
-
-        const diff = transaction.montant - bodyTransacion.montant;
-        // diminution
-
-        if (transaction.flux = "Entrant") {
-            compte.sommeEntree += diff;
-            compte.updateSolde(idUser);
-        } else if (transaction.flux = "Sortant") {
-            compte.sommeEntree += diff;
-            compte.updateSolde(idUser);
         } else {
-            throw new MapossaError("Le flux de la transaction que l'on souhaite modifer n'est pas valide", { "fluxRecu": transaction.flux });
-        }
-        //augmentation
+            console.log("On comence à regarder si la transacion est un virement entrant")
+            if (!(transaction.finalType == "Virement" && transaction.flux == "Entrant" && (!("idParent" in transaction) || transaction.idParent == ""))) {
 
-        bodyTransacion.id = transaction.id;
-        await Transaction.update(idUser, bodyTransacion);
+                console.log("Bon ce n'est pas un virement entrant");
+
+                const trransactionsFilles = await transaction.getAllOf(idUser);
+                console.log(trransactionsFilles);
+
+                if (!trransactionsFilles.empty) {
+                    const promises: Promise<any>[] = [];
+                    trransactionsFilles.docs.forEach((t) => {
+                        console.log("checkons la transaction i");
+                        console.log(t.data());
+                        if (t.exists) {
+                            if (t.data().finalType == "Virement" && t.data().flux == "Entrant") {
+                                let nt = t.data();
+                                nt.amount = transaction.amount;
+                                promises.push(MapossaDataTech.updateTransaction(idUser, nt, t.id))
+
+                            } else if (t.data().finalType == "Depense" && t.data().fees == 0) {
+                                console.log("On est sur que c'est un frais financier");
+                                let frais = t.data();
+                                console.log(frais.amount);
+                                console.log(currentTransaction.fees);
+                                if (frais.amount != currentTransaction.fees) {
+                                    frais.amount = currentTransaction.fees;
+                                    promises.push(MapossaDataTech.updateTransaction(idUser, frais, frais.id as string));
+                                }
+
+                            }
+                        }
+                    })
+                    await Promise.all(promises);
+                }
+            }
+
+            const amounCurrentT = currentTransaction.amount as number;
+
+            const diff = transaction.amount as number - amounCurrentT;
+            // diminution
+
+            if (transaction.flux = "Entrant") {
+                compte.sommeEntree += diff;
+                compte.updateSolde(idUser);
+            } else if (transaction.flux = "Sortant") {
+                compte.sommeEntree += diff;
+                compte.updateSolde(idUser);
+            } else {
+                throw new MapossaError("Le flux de la transaction que l'on souhaite modifer n'est pas valide", { "fluxRecu": transaction.flux });
+            }
+            //augmentation
+
+            currentTransaction.id = transaction.id;
+            await Transaction.update(idUser, currentTransaction);
+        }
+
 
     }
     /*-------------------------------------------------------------------------------------------------------------------------*/
@@ -347,13 +421,13 @@ export default class MapossaDataTech {
         // sinon on vérifie qu'il n'a pas de catégories personnel
         const cats = await Categorie.getAllOfUser(idUser);
         let userAlreadyHasPersonnalCat = false;
-        logger.log("Voivci toutes les cagtégories de l'utilisateurs")
-        logger.log(cats)
+        console.log("Voivci toutes les cagtégories de l'utilisateurs")
+        console.log(cats)
         cats.forEach((c) => {
             if (!c.isAuto) userAlreadyHasPersonnalCat = true;
         })
-        logger.log("Voyons si l'utilisateur a déja une categorie auto")
-        logger.log(userAlreadyHasPersonnalCat)
+        console.log("Voyons si l'utilisateur a déja une categorie auto")
+        console.log(userAlreadyHasPersonnalCat)
         if (userAlreadyHasPersonnalCat) {
             if (!User.isPremium(idUser)) throw new MapossaError("Il faut passer premium pour ajouter une autre catégorie personnel");
         }
@@ -365,84 +439,65 @@ export default class MapossaDataTech {
         //sinon on créee la catégorie
 
     }
-    public static async createUser(user: any) {
-        // on créee l'utilisateur sur firebase
-        if (!("email" in user && user.email)) throw new MapossaError("Il manque l'email de l'utilisateur");
-        //if (!( ("isSmartWallet" in request.body ) || ("isBusiness" in request.body))  ) response.send(new Response("Il faut préciser si l'utilisateur est un smartwallet et ou un business", true )).status(201);
-
-        const gtu = User.toGoogleUser(user);
-        const gUser = await auth.createUser(gtu);
-
-        console.log(gUser);
-        // const nuser = await User.create({ uid: gUser.uid, ...user })
-        // logger.log(nuser)
-        // const adaloUser = await createUserOnAdalo(nuser);
-        // nuser.idAdalo = adaloUser.id ;
-        // logger.log(nuser)
-        // await User.update(nuser);
-        // // création des catégories automatique de l'utilisateur
-        // const categoriesAuto : any[]= [];
-
-        // categoriesAuto.push ( Categorie.construct("Crédit de communication","Depense",""))
-
-        // categoriesAuto.push ( Categorie.construct("Crédit appel","Depense",""))
-        // categoriesAuto.push ( Categorie.construct("Crédit de SMS","Depense",""))
-        // categoriesAuto.push ( Categorie.construct("Crédit internet","Depense", ""))
-        // categoriesAuto.push ( Categorie.construct("Loisir", "Depense", ""))
-        // categoriesAuto.push ( Categorie.construct("Famille", "Depense" , ""))
-        // categoriesAuto.push ( Categorie.construct("Transport", "Depense" , ""))
-        // categoriesAuto.push ( Categorie.construct("Alimentation", "Depense" , ""))
-        // categoriesAuto.push ( Categorie.construct("Cadeaux", "Depense" , ""))
-        // categoriesAuto.push ( Categorie.construct("Logement", "Depense" , ""))
-        // categoriesAuto.push ( Categorie.construct("Achat", "Depense" , ""))
-
-
-        // categoriesAuto.push ( Categorie.construct("Salaire", "Revenu", ""))
-        // categoriesAuto.push ( Categorie.construct("Rendement sur investissement", "Revenu" , ""))
-
-        // categoriesAuto.push ( Categorie.construct("Virement pour paiement", "Virement" , ""))
-        // categoriesAuto.push ( Categorie.construct("Virement récurrent", "Virement" , ""))
-        // categoriesAuto.push ( Categorie.construct("Virement exceptionnel", "Virement" , ""))
-
-        // await Categorie.bulkCreate(nuser.id , categoriesAuto);
-
-        // return nuser;
-    };
-
     public static getAllLogoOfCategorie() {
         return Categorie.getAllLogo();
     }
 
-    public static async bulkCreateTransactionAuto(idUser: string, transactions: Array<any>) {
+    public static async bulkCreateTransactionAuto(idUser: string, transactions: Array<Transaction>) {
 
         if (transactions.length < 1) throw new MapossaError("Il faut au moins une transactions");
-        const comptes = await CompteFinancier.getAllOfUser(idUser);
 
-        comptes.forEach(async (compte) => {
+        const transactionPaiement = [];
+        const autres = []
+        for (const transaction of transactions) {
 
-            const transactionsduCompte = transactions.filter(el => el.idCompte == compte.id);
-            if (transactionsduCompte.length > 0) {
-                let sommeEntree = 0;
-                let sommeSortie = 0;
-                
-                
-                transactionsduCompte.forEach((t) => {
-                    logger.log(t)
-                    
-                    if (t.flux == "Entrant") {sommeEntree += t.montant}; 
-                    if (t.flux == "Sortant") {
-                        sommeSortie+= t.montant
-                    };
-
-
-                })
-                compte.sommeEntree = sommeEntree;
-                compte.sommeSortie = sommeSortie;
-                await compte.updateSolde(idUser)
+            if ("initialType" in transaction && transaction.initialType == "Paiement" as initialType && transaction.accountId) {
+                transactionPaiement.push(MapossaDataTech.creerTransaction(idUser, transaction))
+            } else {
+                autres.push(transaction)
             }
+        }
+
+        /**Sauvegarde des transactions */
+        await Transaction.bulkCreate(idUser, autres)
+        /** Enegistement des transactions */
+        await Promise.all(transactionPaiement);
 
 
-        })
-        await Transaction.bulkCreate(idUser, transactions)
+
+
+
+
+
+        // const comptes = await CompteFinancier.getAllOfUser(idUser);
+
+        // comptes.forEach(async (compte) => {
+
+        //     const transactionsduCompte = transactions.filter(el => el.idCompte == compte.id);
+        //     if (transactionsduCompte.length > 0) {
+        //         let sommeEntree = 0;
+        //         let sommeSortie = 0;
+
+
+        //         transactionsduCompte.forEach((t) => {
+        //             console.log(t)
+
+        //             if (t.flux == "Entrant") { sommeEntree += t.montant };
+        //             if (t.flux == "Sortant") {
+        //                 sommeSortie += t.montant
+        //             };
+
+
+        //         })
+        //         compte.sommeEntree = sommeEntree;
+        //         compte.sommeSortie = sommeSortie;
+        //         await compte.updateSolde(idUser)
+        //     }
+
+
+        // })
+        // await Transaction.bulkCreate(idUser, transactions)
+
     }
+
 }

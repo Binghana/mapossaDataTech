@@ -60,6 +60,7 @@ export default class CompteFinancier implements ISystemData {
     public typeCompte : string = "";
     public updateDate: Date = new Date();
     public numero : string = "";
+    public isAuto : boolean = false;
     /**
      * Représente le solde initial d'un compte financier
      */
@@ -73,8 +74,10 @@ export default class CompteFinancier implements ISystemData {
      * @returns un object Compte représentant du compte
      * venant de la collection
      */
-    static normalize(item: any): CompteFinancier {
-        const compte = new CompteFinancier()
+    static normalize(item: any): CompteFinancier  {
+        console.log("voici ce qui a été passé à normalise de compte financier")
+        console.log(item)
+        let compte = new CompteFinancier();
 
         if ("id" in item) compte.id = item.id;
         if ("nom" in item) compte.nom = item.nom;
@@ -82,11 +85,12 @@ export default class CompteFinancier implements ISystemData {
         if ("idOperateur" in item) compte.idOperateur = item.idOperateur;
         if ("sommeEntree" in item) compte.sommeEntree = item.sommeEntree;
         if ("sommeSortie" in item) compte.sommeSortie = item.sommeSortie;
-        if("soldeInitial" in item) compte.soldeInitial = item.soldeInitial;
+         if("soldeInitial" in item) compte.soldeInitial = item.soldeInitial;
         if ("nomOperateur" in item ) compte.nomOperateur = item.nomOperateur;
-        if ("logOperateur" in item ) compte.logoOperateur = item.logoOperateur ;
+        if ("logoOperateur" in item ) compte.logoOperateur = item.logoOperateur ;
         if ("typeCompte" in item ) compte.typeCompte = item.typeCompte ;
         if ("numero" in item) compte.numero = item.numero ;
+        if ("isAuto" in item) compte.isAuto = item.isAuto;
         
 
         return compte;
@@ -114,9 +118,9 @@ export default class CompteFinancier implements ISystemData {
      * @returns un object qui représente le compte financier qui 
      * a été crée
      */
-    static async create(idUser: string, compte: CompteFinancier) {
+    static async create(idUser: string, compte: any) {
         
-        return (await CompteFinancier.collection(idUser).add(compte)).id;
+        return (await CompteFinancier.collection(idUser).add({...compte})).id;
 
     }
     /**
@@ -174,6 +178,9 @@ export default class CompteFinancier implements ISystemData {
     }
     static async getByNom( idUser : string , nom : string) {
         return await this.collection(idUser).where("nom", "==", nom).get()
+    }
+    static async getByType( idUser : string , typeCompte : string) {
+        return await this.collection(idUser).where("typeCompte", "==", typeCompte).get()
     }
     /**
      * Cette fonction s'occupe de modifer un compte financier
@@ -261,7 +268,7 @@ export default class CompteFinancier implements ISystemData {
      * @param idUser Inique l'identifiant de l'utilisateur
      * @returns 
      */
-    private static collection(idUser: string) {
+    public static collection(idUser: string) {
         return userRef(idUser).collection(CompteFinancier.collectionName).withConverter(this.converter);
     }
     /**
@@ -332,20 +339,20 @@ export default class CompteFinancier implements ISystemData {
         logger.log("On récupère les data du compte");
         const compteDest = refCompteDest.data() as CompteFinancier;
         logger.log("On récupère le montant de la transaction");
-        let montant : number = transact.montant;
+        let montant : number = transact.amount as number;
         logger.log("On retire dans le compte");
         this.retirer(idUser, montant);
         logger.log("On dépose dans le compte");
         compteDest.deposer(idUser,montant);
         logger.log("On crée la transaction fille");
         let t = new Transaction();
-        t.montant = montant;
+        t.amount = montant;
         t.flux = "Entrant";
         t.dateTransaction = new Date();
-        t.idCompte = compteDest.id;
-        t.typeInitial = transact.typeInitial;
-        t.idCategorie = transact.idCategorie;
-        t.parent = transact.id as string;
+        t.accountId = compteDest.id;
+        t.initialType = transact.initialType;
+        t.idCategory = transact.idCategory;
+        t.idParent = transact.id as string;
         logger.log("On set les attributs de la transactions");
         
         let idT = await Transaction.create(idUser, t);

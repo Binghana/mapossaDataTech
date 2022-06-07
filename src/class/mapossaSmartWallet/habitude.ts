@@ -1,5 +1,5 @@
 import { ISystemData, userRef } from "../@interface";
-import { heure , query } from "../@type";
+import { hour , query } from "../@type";
 
 
 /**
@@ -33,7 +33,7 @@ export default class Habitude implements ISystemData {
      * Indique l'heure de rappel de l'habitude 
      * par fréquence
      */
-    public rappel : heure | undefined;
+    public rappel : hour | undefined;
     /**
      * Représente la date début de l'habitude
      */

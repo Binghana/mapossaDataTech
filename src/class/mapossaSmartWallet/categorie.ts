@@ -1,4 +1,4 @@
-import { typeFinal  } from "../@type";
+import { finalType  } from "../@type";
 import { dataBase, ISystemData, userRef } from "../@interface";
 /**
  * Représentation d'une catégorie selon Mapossa
@@ -18,15 +18,15 @@ export default class Categorie implements ISystemData {
      * Indique l'identifiant de la catégorie dans la
      * collection catégorie
      */
-    public id: string | undefined;
+    public id?: string;
     /**
      * Indique le nom de la catégorie
      */
-    public nom: string | undefined;
+    public nom?: string;
     /**
      * Indique le type final de la catégorie
      */
-    public typeFinal: typeFinal |  undefined;
+    public typeFinal?: finalType ;
     /**
      * Indique si la catégorie est une catégorrie créer par
      * Mapossa ou par l'utilisateur
@@ -36,7 +36,7 @@ export default class Categorie implements ISystemData {
     /**
      * Indique l'url de l'image du logo de la categorie
      */
-    public logo: string | undefined;
+    public logo?: string | undefined;
     /**
      * Indique l'identifiant de la catégorie parent de 
      * cette catégorie
@@ -254,7 +254,7 @@ export default class Categorie implements ISystemData {
      * @param idUser 
      * @returns 
      */
-    private static collection ( idUser: string) {
+    public static collection ( idUser: string) {
         return userRef(idUser).collection(this.collectionName).withConverter(this.converter);
     }
     /**
@@ -294,7 +294,7 @@ export default class Categorie implements ISystemData {
     public static getLogoCategorieCollectionName() {
         return "logoCategories";
     }
-    public static construct( nom : string , typeFinal : typeFinal  ,logo : any ,  ) {
+    public static construct( nom : string , typeFinal : finalType  ,logo : any ,  ) {
         const categorie = new this()
         categorie.nom = nom;
         categorie.typeFinal = typeFinal;
@@ -303,5 +303,32 @@ export default class Categorie implements ISystemData {
 
         return {...categorie}
     }
-   
+ 
+    public static async createCategorieAuto ( idUser : string ) {
+        
+        const categoriesAuto : any[]= [];
+
+        categoriesAuto.push ( Categorie.construct("Crédit de communication","Depense","https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fcashback.png?alt=media&token=1babf055-0b5a-48c3-aee7-90619efd159e"))
+
+        categoriesAuto.push ( Categorie.construct("Crédit appel","Depense","https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fphone-call.png?alt=media&token=6844cbb7-323f-4b27-88c3-42b011dd1c58"))
+        categoriesAuto.push ( Categorie.construct("Crédit de SMS","Depense","https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fchat.png?alt=media&token=4221549c-886d-4d59-8edb-84b47d61bfe7"))
+        categoriesAuto.push ( Categorie.construct("Crédit internet","Depense", "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fwireless.png?alt=media&token=5722be3c-3ffc-4ec6-9ce9-ef13dbc56f96"))
+        categoriesAuto.push ( Categorie.construct("Loisir", "Depense", "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fmega-ball.png?alt=media&token=0f984ba2-af0d-412a-a763-fed0424238a8"))
+        categoriesAuto.push ( Categorie.construct("Famille", "Depense" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fmother.png?alt=media&token=e665c3af-d72f-4360-99fe-9d9f276f8bb6"))
+        categoriesAuto.push ( Categorie.construct("Transport", "Depense" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fcar.png?alt=media&token=c8b9ae54-4468-4b79-9013-96a38695ffe3"))
+        categoriesAuto.push ( Categorie.construct("Alimentation", "Depense" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fsoup.png?alt=media&token=5fefacea-0db0-43c1-84c4-890a8fddc6ed"))
+        categoriesAuto.push ( Categorie.construct("Cadeaux", "Depense" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fgift.png?alt=media&token=297f01df-894f-4014-b5a7-5287d6882ddd"))
+        categoriesAuto.push ( Categorie.construct("Logement", "Depense" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Farchitecture-and-city.png?alt=media&token=d0680a85-1a44-41f0-9923-c45274f00056"))
+        categoriesAuto.push ( Categorie.construct("Achat", "Depense" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fonline-shopping.png?alt=media&token=f76397ac-6a13-48b3-9bad-2cb74a0aadaf"))
+
+
+        categoriesAuto.push ( Categorie.construct("Salaire", "Revenu", "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fsuitcase%20(1).png?alt=media&token=001dea93-ed63-4b08-ac46-631cf7cc58fa"))
+        categoriesAuto.push ( Categorie.construct("Rendement sur investissement", "Revenu" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Finvestment%20(1).png?alt=media&token=43af7d4b-09ef-419e-b03a-e20b7bbcb949"))
+
+        categoriesAuto.push ( Categorie.construct("Virement pour paiement", "Virement" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fmoney-transfer.png?alt=media&token=e405935a-62f2-40f1-9f76-72926e684845"))
+        categoriesAuto.push ( Categorie.construct("Virement récurrent", "Virement" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Fchecked.png?alt=media&token=e890d19b-5f4e-491d-a480-3f59dc9aea14"))
+        categoriesAuto.push ( Categorie.construct("Virement exceptionnel", "Virement" , "https://firebasestorage.googleapis.com/v0/b/mapossadatatech.appspot.com/o/logoCategorie%2Ftransfer%20(2).png?alt=media&token=0efb1fde-be8a-4f59-89a0-55106bc02251"))
+
+        await Categorie.bulkCreate(idUser , categoriesAuto);
+    }
 }

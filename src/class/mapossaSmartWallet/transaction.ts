@@ -1,8 +1,10 @@
 import { logger } from "firebase-functions/v1";
 import { ISystemData, userRef } from "../@interface";
-import { typeFinal, typeInitial, numeroDeTelephone, devise, flux, decision , query, typeOperateur } from "../@type";
+import { initialType, finalType, devise, flux, decision, typeOperateur, SMS, Operator, phoneNumber, hour } from "../@type";
 import MapossaDataTech from "../mapossaDataTech";
+
 import MapossaError from "../mapossaError";
+import CompteFinancier from "./compteFinancier";
 
 
 
@@ -13,7 +15,9 @@ export default class Transaction implements ISystemData {
     /**
      * "montant" in prototype && "typeFinal" in prototype && "idCompte" in prototype  && "flux" in prototype
      */
-    constructor() { };
+    constructor() {
+        this.createDate = new Date()
+    };
 
     /**
     * Représente le nom de la collection dans laquelle
@@ -24,11 +28,11 @@ export default class Transaction implements ISystemData {
      * Indique l'identifiant de la transaction dans
      * la collection
      */
-    public id: string | undefined;
+    public id?: string;
     /**
      * Représente la date de création de la transaction
      */
-    public createDate: Date = new Date();
+    public createDate: Date;
     /**
      * Représente la dernière date de mise à jour 
      * de la transaction
@@ -37,67 +41,213 @@ export default class Transaction implements ISystemData {
     /**
      * Indique le type initial de la transaction
      */
-    public typeInitial: typeInitial | undefined;
+    public initialType?: initialType | null = null;
     /**
      * Indique le type Final de la transaction
      */
-    public typeFinal: typeFinal | undefined;
+    public finalType?: finalType| null = null;
     /**
-     * Indique le montant de la transaction
+     * représente le flux de la transaction effectuée (Entrant || Sortant)
      */
-    public montant: number = 0;
+    public flux?: flux | null = null;
     /**
-     * Indique le numéro de celui qui a reçu ou envoyé l'argent 
-     * à l'utilisateur Mapossa
+     * représente le montant de la transaction
      */
-    public numeroAssocie: numeroDeTelephone | undefined;
+    public amount?: number | null = null;
+
+    
     /**
-     * Représente l'identifiant de l'utilisateur l'utilisateur Mapossa
-     * qui a participé à la transaction
+     * représente les information supplémentaires que 
+     * l'utilisateur souhaite noter sur sa transaction
      */
-    public idUtilisateurAssocie: string | undefined;
+    public note?: string | null = null;
     /**
-     * Représente les notes ou informations supplémentaires
-     * de la transaction
+     * représente le lieu où la transaction a été éffectuée
      */
-    public note: string | undefined;
+    public lieu?: string | null = null;
     /**
-     * Représente le lieu où a été fait la transaction
+     * représente le moyen de création de la transaction
+     * (True: la transaction a été scrappée ||
+     * False: la transaction a été créée manuellement par l'utilisateur
      */
-    public lieu: string | undefined;
+    public isAuto: boolean = false;
     /**
-     * Représente la devise de la t
+     * représente le tyoe de transactionqui a été éffectuée (Mobile || Espece || Bancaire)
      */
-    public devise: devise = "F CFA";
+    public type?: typeOperateur | null = null;
+    /**
+     * représente la devise de la transaction effectuée (FCFA)
+     */
+    public devise?: devise = "F CFA";
     /**
      * Représente l'identifiant de la catégorie à laquelle est 
      * associé la Transaction
      */
-    public idCategorie: string | undefined;
+    public idCategory?: string | null = null;
     /**
-     * Indique le flux de la transaction
+     * représente le nom de la catégorie associée à la transaction
      */
-    public flux: flux | undefined;
+    public nameCategory?: string | null = null;
     /**
-     * Indique l'identifiant du compte au quel est associé
-     * la Transaction
+     * représente l'url du logo de la catégorie associée à la transaction
      */
-    public idCompte: string | undefined;
+    public imageCategory?: string | null = null
+
     /**
-     * Représente la date à la quelle la transaction à été effectué
+     * représente l'opérateur de la transaction qui a été scrappée
      */
-    public dateTransaction: Date | undefined;
+    public operator?: Operator | null = null;
     /**
-     * Indique la décision de l'utilisateur par rapport à sa transaction
+     * représente le centre de messageire de l'opérateur qui a énvoyé un SMS financier
      */
-    public decision: decision = "";
+    public serviceCenter?: phoneNumber | null = null ;
+    /**
+     * représente l'id du compte sur lequel est effectuée la transaction mère
+     */
+    public accountId?: string | null = null;
 
-    public frais : number = 0;
+    /**
+     * représente le nom du compte sur lequel est effectuée la transaction mère
+     */
+    public nameAccount?: string | null = null;
 
-    public parent : string = "";
+    /**
+     * représente l'url le logo du compte sur lequel est effectuée la transaction mère
+     * idReceiverAccount
+     */
+    public imageAccount?: string | null = null;
+    /**
+     * représente l'id du compte sur lequel est effectuée la transaction fille de revenu
+     */
+    public idReceiverAccount?: string | null = null;
+    /**
+     * représente le nom du compte sur lequel est effectuée la transaction fille de
+        revenu
+     */
+    public nameReceiverAccount?: string | null = null;
+    /**
+     * représente l'url du logo du compte sur lequel est effectuée la transaction fille de
+     * revenu
+     */
+    public imageReceiverAccount?: string | null = null ;
+    /**
+     * représente la date à laquelle l'utilisateur a éffectué 
+     * la transaction dans la vie réelle
+     */
+    public dateTransaction?: Date | null = null;
 
-    public type? : typeOperateur ;
+    /**
+     * représente l'heure à laquelle l'utilisateur 
+     * a éffectué la transaction dans la vie réelle
+     */
+    public hour?: hour | null = null ;
+    /**
+     * représente l'information supplémentaire donnée par l'utilisateur pour définir le type final
+     * de la transaction ( (Depot[Moi meme || Quelqu'un d'autre]) || (Transfert[Entrant || Sortant || Vers un de
+     * mes comptes]) )
+     */
+    public decision?: decision | null = null;
+    /**
+     * représente le montant des frais associés à la transaction
+     * transactionID
+     */
+    public fees?: number | null = null;
+    /**
+     * représente le nom de l'expéditeur de la transaction
+     */
+    public senderName?: string | null = null;
 
+    /**
+     * Représente l'identifiant de la transaction mère de la fille
+     */
+    public idParent?: string | null = null;
+    /**
+     * représente le numéro de l'expéditeur de la transaction
+     */
+    public senderPhoneNumber?: phoneNumber | null = null;
+    /**
+     * représente le nom du récepteur de la transaction
+     */
+    public receiverName?: string | null = null;
+    /**
+     * représente le numéro du récepteur de la transaction
+     */
+    public receiverPhoneNumber?: phoneNumber | null = null;
+    /**
+     * représente le solde du compte associé à la transaction
+     */
+    public balance?: number | null = null;
+
+    /**
+     * Représente le numéro du compte financier qui cooncerne la transaction
+     */
+    public accountPhoneNumber?: phoneNumber | null = null;
+
+    /**
+     * détermine si le centre de messagerie de l'utilisateur est inconnu (True: le centre de
+     * messagerie n'est pas connu || False: le centre de messagerie est connu)
+     */
+    public alert?: boolean | null = null ;
+
+    /**
+     * détermine si l'algorithme n'a pas extrait le montant du SMS 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme
+     */
+    public amount_error?: boolean | null = null;
+    /**
+     * détermine si l'algorithme n'a pas extrait les frais du SMS 
+     * //cet attribut est utilisé sur
+     * le tableau de bord de l'amélioration de l'algorithme
+     */
+    public fees_error?: boolean | null = null;
+    /**
+     * détermine si l'algorithme n'a pas extrait la date du SMS 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme
+     */
+    public date_error?: boolean | null = null;
+
+    /**
+     * détermine si l'algorithme n'a pas extrait le solde du SMS 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme
+     */
+    public balance_error?: boolean | null = null;
+    /**
+     * détermine si le centre de messagerie de l'utilisateur est inconnu 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme
+     */
+    public verification_error?: boolean = false;
+    /**
+     * détermine si l'algorithme a eu un problème de verification 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme
+     */
+    public risk?: boolean = false;
+
+    /**
+     * détermine si l'algorithme a eu un problème de classification 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme
+     */
+    public error?: boolean = false;
+
+    /**
+     * détermine si l'algorithme a eu un problème d'extraction 
+     * cet attribut est utilisé sur le tableau de bord de l'amélioration de l'algorithme 
+     */
+    public problem?: boolean = false;
+
+
+
+    /**
+     * Représente le sms d'ou à été découper la transaction
+     * Cette atribut n'a de sens que pour les transactions scrapé ( isAuto = true )
+     */
+    public baseSMS?: SMS | null = null;
+    /**
+     * Représente l'id de la transaction auprès de l'opérateur
+     */
+    public transactionID?: string | null = null;
+
+
+    // count 44 atributs
     // la méthode de normalisation
     /**
      * Cette fonction s'occupe de Changer un item de la collection
@@ -108,34 +258,74 @@ export default class Transaction implements ISystemData {
      * venant de la collection
      */
     static normalize(transactionItem: any): Transaction {
+
         const transaction = new Transaction();
-
-
 
         if ("id" in transactionItem) transaction.id = transactionItem.id;
         if ("createDate" in transactionItem) transaction.createDate = transactionItem.createDate;
         if ("updateDate" in transactionItem) transaction.updateDate = transactionItem.updateDate;
 
-        if ("typeInitial" in transactionItem) transaction.typeInitial = transactionItem.typeInitial;
-        if ("typeFinal" in transactionItem) transaction.typeFinal = transactionItem.typeFinal;
+        if ("baseSMS" in transactionItem) transaction.baseSMS = transactionItem.baseSMS;
+        if ("operator" in transactionItem) transaction.operator = transactionItem.operator;
+        if ("serviceCenter" in transactionItem) transaction.serviceCenter = transactionItem.serviceCenter;
 
-        if ("montant" in transactionItem) transaction.montant = transactionItem.montant;
-        if ("numeroAssocie" in transactionItem) transaction.numeroAssocie = transactionItem.numeroAssocie;
-        if ("idUtilisateurAssocie" in transactionItem) transaction.idUtilisateurAssocie = transactionItem.idUtilisateurAssocie;
-        if ("frais" in transactionItem) transaction.frais = transactionItem.frais;
+        if ("transactionID" in transactionItem) transaction.transactionID = transactionItem.transactionID;
+        if ("isAuto" in transactionItem) transaction.isAuto = transactionItem.isAuto;
+
+        if ("idParent" in transactionItem) transaction.idParent = transactionItem.idParent;
+
+        if ("initialType" in transactionItem) transaction.initialType = transactionItem.initialType;
+        if ("finalType" in transactionItem) transaction.finalType = transactionItem.finalType;
+
+        if ("amount" in transactionItem) transaction.amount = transactionItem.amount;
+
+        if ("accountId" in transactionItem) transaction.accountId = transactionItem.accountId;
+        if ("accountPhoneNumber" in transactionItem) transaction.accountPhoneNumber = transactionItem.accountPhoneNumber;
+        if ("nameAccount" in transactionItem) transaction.nameAccount = transactionItem.nameAccount;
+        if ("imageAccount" in transactionItem) transaction.imageAccount = transactionItem.imageAccount;
+
+        if ("idReceiverAccount" in transactionItem) transaction.idReceiverAccount = transactionItem.idReceiverAccount;
+        if ("nameReceiverAccount" in transactionItem) transaction.nameReceiverAccount = transactionItem.nameReceiverAccount;
+        if ("imageReceiverAccount" in transactionItem) transaction.imageReceiverAccount = transactionItem.imageReceiverAccount;
+
+        if ("senderName" in transactionItem) transaction.senderName = transactionItem.senderName;
+        if ("senderPhoneNumber" in transactionItem) transaction.senderPhoneNumber = transactionItem.senderPhoneNumber;
+        if ("receiverName" in transactionItem) transaction.receiverName = transactionItem.receiverName;
+
+
+        if ("accountPhoneNumber" in transactionItem) transaction.accountPhoneNumber = transactionItem.accountPhoneNumber;
+
+        if ("alert" in transactionItem) transaction.alert = transactionItem.alert;
+
+        if ("amount_error" in transactionItem) transaction.amount_error = transactionItem.amount_error;
+        if ("fees_error" in transactionItem) transaction.fees_error = transactionItem.fees_error;
+        if ("date_error" in transactionItem) transaction.date_error = transactionItem.date_error;
+        if ("balance_error" in transactionItem) transaction.balance_error = transactionItem.balance_error;
+
+        if ("verification_error" in transactionItem) transaction.verification_error = transactionItem.verification_error;
+        if ("risk" in transactionItem) transaction.risk = transactionItem.risk;
+        if ("error" in transactionItem) transaction.error = transactionItem.error;
+        if ("problem" in transactionItem) transaction.problem = transactionItem.problem;
+
+        if ("hour" in transactionItem) transaction.hour = transactionItem.hour;
+        if ("fees" in transactionItem) transaction.fees = transactionItem.fees;
 
         if ("note" in transactionItem) transaction.note = transactionItem.note;
         if ("devise" in transactionItem) transaction.devise = transactionItem.devise;
         if ("lieu" in transactionItem) transaction.lieu = transactionItem.lieu;
-        if ("idCategorie" in transactionItem) transaction.idCategorie = transactionItem.idCategorie;
-        if ("idCompte" in transactionItem) transaction.idCompte = transactionItem.idCompte;
+
+        if ("idCategory" in transactionItem) transaction.idCategory = transactionItem.idCategory;
+        if ("nameCategory" in transactionItem) transaction.nameCategory = transactionItem.nameCategory;
+        if ("nameReceiveimageCategoryrAccount" in transactionItem) transaction.imageCategory = transactionItem.imageCategory;
+        if ("imageReceiverAccount" in transactionItem) transaction.imageReceiverAccount = transactionItem.imageReceiverAccount;
+
         if ("flux" in transactionItem) transaction.flux = transactionItem.flux;
         if ("decision" in transactionItem) transaction.decision = transactionItem.decision;
         if ("dateTransaction" in transactionItem) transaction.dateTransaction = transactionItem.dateTransaction;
 
-        if ("parent" in transactionItem) transaction.parent = transactionItem.parent;
+
         if ("type" in transactionItem) transaction.type = transactionItem.type;
-        
+
         return transaction;
     }
     /**
@@ -219,9 +409,9 @@ export default class Transaction implements ISystemData {
       * @param query un objet représentant la requête de l'utilisateur
       * @returns 
       */
-    static async query(idUser: string, query: query) {
+    static async query(idUser: string, attribut: string, valeur: string) {
         const transactions: Transaction[] = [];
-        (await this.collection(idUser).where(query.attribut, query.operateur, query.valeur).get()).docs.forEach((d) => { transactions.push(d.data()) })
+        (await this.collection(idUser).where(attribut, "==", valeur).get()).docs.forEach((d) => { transactions.push(d.data()) })
         return transactions;
     }
 
@@ -276,9 +466,9 @@ export default class Transaction implements ISystemData {
      * @returns un object représentant la transaction qui a été modifiée
      */
     static async update(idUser: string, transaction: Transaction): Promise<Transaction> {
-    
-    
-        await Transaction.collection(idUser).doc(transaction.id as string).update({...transaction});
+
+
+        await Transaction.collection(idUser).doc(transaction.id as string).update({ ...transaction });
         return Transaction.normalize(transaction)
     }
     /**
@@ -356,7 +546,7 @@ export default class Transaction implements ISystemData {
      */
     static isTransaction(prototype: object): prototype is Transaction {
 
-        return ("montant" in prototype && "typeFinal" in prototype && "idCompte" in prototype  && "flux" in prototype);
+        return ("amount" in prototype && "finalType" in prototype && "accountId" in prototype && "flux" in prototype);
     }
     /**
      * Cette fonction s'occuppe de donner la référence de la collection 
@@ -364,7 +554,7 @@ export default class Transaction implements ISystemData {
      * @param idUser Indique l'identifiant de l'utilisateur actuelle
      * @returns 
      */
-    private static collection(idUser: string) {
+    public static collection(idUser: string) {
         return userRef(idUser).collection(Transaction.collectionName).withConverter(this.converter);
     }
     /**
@@ -373,12 +563,12 @@ export default class Transaction implements ISystemData {
     static converter: FirebaseFirestore.FirestoreDataConverter<Transaction> = {
         toFirestore: function (modelObject: Transaction): FirebaseFirestore.DocumentData {
             delete modelObject.id;
-            return {...modelObject}
+            return { ...modelObject }
         },
         fromFirestore: function (snapshot: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>): Transaction {
             const data = snapshot.data();
             const id = snapshot.id
-            return Transaction.normalize({ id: id, ...data })
+            return Transaction.normalize({ id: id, ...data });
         }
     }
     /**
@@ -389,41 +579,63 @@ export default class Transaction implements ISystemData {
         return this.collection(idUser).firestore.batch();
     }
 
-    public toString() : string {
-        return "\nid : " + this.id +
-            "\nmontant : " + this.montant +
-            "\ntypeInitial : " + this.typeInitial + 
-            "\ntypeFinal : " + this.typeFinal +
-            "\nflux : " + this.flux  +
-            "\nidCompte : " + this.idCompte + 
-            "\nidCategorie : " + this.idCategorie ;         
-    }
-    public async createFrais(idUser : string){
-        if (this.frais <=0) throw new Error("Impossible de créer la transaction de frais car le montant des frais est nulll ou négatif")
+    // public toString(): string {
+    //     return "\nid : " + this.id +
+    //         "\nmontant : " + this.amount +
+    //         "\ntypeInitial : " + this.in +
+    //         "\ntypeFinal : " + this.typeFinal +
+    //         "\nflux : " + this.flux +
+    //         "\nidCompte : " + this.idCompte +
+    //         "\nidCategorie : " + this.idCategorie;
+    // }
+    public async createFrais(idUser: string) {
+        if (this.fees && this.fees <= 0) throw new Error("Impossible de créer la transaction de frais car le montant des frais est absent ou nul")
         let f = new Transaction();
-        f.typeFinal = "Depense";
-        f.montant = this.frais;
+        f.finalType = "Depense";
+        f.amount = this.fees;
         f.flux = "Sortant";
-        f.idCompte = this.idCompte
-        f.dateTransaction = new Date();
-        f.idCategorie = "FraisFinancier";
-        f.parent = this.id as string;
-        f.frais = 0;
-        let ids = await MapossaDataTech.creerTransaction(idUser,f);
+        f.accountId = this.accountId
+        f.dateTransaction = this.dateTransaction;
+        f.idCategory = "FraisFinancier";
+        f.idParent = this.id as string;
+        f.fees = undefined;
+        let ids = await MapossaDataTech.creerTransaction(idUser, f);
+        this.fees = undefined;
         return ids.idMere;
-        
-        
-    }
-    public async create(idUser : string) {
-        this.id = await Transaction.create   (idUser, {...this});
+
 
     }
-    public static getAllOf(idUser: string , idTransaction : string) {
-        return this.collection(idUser).where("parent","==", idTransaction).get();
+    public async createVirement(idUser: string) {
+
+        if (this.finalType != "Virement" ) throw new MapossaError("Impossible de créer le virement car la transaction n'a pas pour type final virement");
+        
+        if (!this.idReceiverAccount) {
+            throw new MapossaError("Impossible de créer la transaction fille de virement car \nil manque l'identifiant du compte de la transactin fille")
+        }
+        const refCompteFille = await CompteFinancier.getById(idUser, this.idReceiverAccount);
+        if (!refCompteFille.exists) throw new MapossaError("Impossible de trouver le compte financier de la transaction fille de virement ", { idCompte: refCompteFille.id });
+
+        let virement = Transaction.normalize(this);
+
+        virement.idReceiverAccount = this.accountId;
+        virement.idParent = this.id;
+        virement.isAuto = false;
+        virement.id = undefined;
+        virement.fees = undefined;
+
+        return await MapossaDataTech.creerTransaction(idUser, virement);
+
+    }
+    public async create(idUser: string) {
+        this.id = await Transaction.create(idUser, { ...this });
+
+    }
+    public static getAllOf(idUser: string, idTransaction: string) {
+        return this.collection(idUser).where("parent", "==", idTransaction).get();
     }
 
-    public getAllOf(idUser : string){
-        if ( !("id" in this )) throw new MapossaError("La transaction dont on essaye de récupérer les transactions fille n'a pas d'identifiant", this);
+    public getAllOf(idUser: string) {
+        if (!("id" in this)) throw new MapossaError("La transaction dont on essaye de récupérer les transactions fille n'a pas d'identifiant", this);
         return Transaction.getAllOf(idUser, this.id as string);
     }
     // public static initCompte ( compteFinancier : any ) {

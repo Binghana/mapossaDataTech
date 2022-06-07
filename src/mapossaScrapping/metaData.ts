@@ -1,5 +1,5 @@
 const mapossaScrappingData = {
-    "currentVersion" : "0.0.10",
+    "currentVersion" : "0.0.12",
 }
 
 export default mapossaScrappingData;

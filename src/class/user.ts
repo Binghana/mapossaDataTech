@@ -183,8 +183,16 @@ export default class User implements ISystemData {
      * @returns L'utilisateur qui a été crée
      */
     static async create(user: any) {
-        const uid = user.uid;
-        delete user.uid;
+        let uid
+        if (user.uid) {
+            uid = user.uid;
+            delete user.uid;
+        }else
+        if (user.id) {
+            uid = user.id
+            delete user.id;
+        }
+       
         //if (! ("isSmartWallet" in user)) { user.isSmartWallet = true;}
         await this.collection().doc(uid).set(user);
         return { id: uid, ...user };
@@ -196,7 +204,8 @@ export default class User implements ISystemData {
      * @returns L'utilisateur d'identifiant donné
      */
     static async getById(idUser: string) {
-        return (await this.collection().doc(idUser).get()).data();
+
+        return  await this.collection().doc(idUser).get();
     }
     /**
      * Cette fonction renvoie un utilisateur à partir de son email
@@ -251,7 +260,7 @@ export default class User implements ISystemData {
      * Renvoi la référence de la collection des utilisateurs
      * @returns 
      */
-    private static collection() {
+    static collection() {
         return dataBase.collection(this.collectionName).withConverter(this.converter);
     }
     /**
@@ -262,10 +271,10 @@ export default class User implements ISystemData {
             delete modelObject.id;
             return modelObject
         },
-        fromFirestore: function (snapshot: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>): User {
+        fromFirestore: function (snapshot: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>): any {
             const data = snapshot.data();
             const id = snapshot.id
-            return User.normalize({ id: id, ...data })
+            return { id: id, ...data }
         }
     }
     static async generateEmailVerificationLink(email: string) {
@@ -289,7 +298,8 @@ export default class User implements ISystemData {
         return await auth.generateEmailVerificationLink(email,actionCodeSettings)
     }
     public static async isPremium ( idUser : string) {
-        const usr = await this.getById(idUser);
+        const usr = await (await this.getById(idUser)).data();
+
        logger.log("Voici les info de l'utilisateurs");
        logger.log(usr)
        logger.log(usr?.isPremium)
