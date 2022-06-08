@@ -1,5 +1,6 @@
 import { finalType  } from "../@type";
 import { dataBase, ISystemData, userRef } from "../@interface";
+import MapossaError from "../mapossaError";
 /**
  * Représentation d'une catégorie selon Mapossa
  */
@@ -81,7 +82,7 @@ export default class Categorie implements ISystemData {
         if ("montantCumule" in item) categorie.montantCumule = item.montantCumule;
         //if ("isDelete" in item) categorie.isDelete = item.isDelete ; else categorie.isDelete = false;  
         
-        return {...categorie}
+        return categorie;
     }
     // /**
     //  * Cette fonction permet de convertir un grand nombre d'objet de la 
@@ -137,7 +138,7 @@ export default class Categorie implements ISystemData {
      */
     static async getById(idUser: string, idCategorie: string) {
        let cat = (await this.collection(idUser).doc(idCategorie).get())
-       if (! cat.exists) throw "La catégorie demandé n'existe pas";
+       if (! cat.exists) throw new MapossaError ("La catégorie demandé n'existe pas");
        return cat.data();
      
     }
@@ -331,4 +332,8 @@ export default class Categorie implements ISystemData {
 
         await Categorie.bulkCreate(idUser , categoriesAuto);
     }
+
+    async update ( idUser : string) {
+        return await Categorie.update(idUser , this) ;
+    }   
 }

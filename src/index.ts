@@ -15,7 +15,7 @@ import Offre from "./class/mapossaBusiness/offre";
 import Produit from "./class/mapossaBusiness/produit";
 import Commande from "./class/mapossaBusiness/commande";
 import SMS from "./class/sms/SMS";
-import MapossaDataTech from "./class/mapossaDataTech";
+import MapossaDataTech, { setUpQuery } from "./class/mapossaDataTech";
 import OperateursFinanciers from "./class/operateurs/OperateursFinanciers";
 
 import mapossaScrappingData from "./mapossaScrapping/metaData";
@@ -176,7 +176,7 @@ mapossaDataTech.users.post("/:idUser/" + Transaction.collectionName, async (requ
                 return response.status(401).send(new Response("The 'transactions' attribute representing the scraped transactions to be saved is missing", true));
             }
 
-            const result = await Transaction.bulkCreate(idUser, request.body.transactions);
+            const result = await MapossaDataTech.bulkCreateTransactionAuto(idUser, request.body.transactions);
 
             return response.status(200).send(new Response("The scraped transactions have been saved successfully", false, result));
         }
@@ -217,7 +217,7 @@ mapossaDataTech.users.post("/:idUser/" + Transaction.collectionName, async (requ
 mapossaDataTech.users.get("/:idUser/" + Transaction.collectionName + "/:idTransaction", async (request, response) => {
     try {
         const transaction = await Transaction.getById(request.params.idUser, request.params.idTransaction);
-        response.status(201).send(new Response("Voici la Transaction demandé", false, transaction.data()));
+        response.status(201).send(new Response("Voici la Transaction demandé", false, transaction));
     } catch (error) {
         response.status(500).send(new Response("Une érreur s'est produite", true, error));
     }
@@ -244,16 +244,7 @@ mapossaDataTech.users.get("/:idUser/" + Transaction.collectionName, async (reque
 
         if (queryParams) {
             // si il ya des querry params
-
-            for (const param in queryParams) {
-                if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
-                    const value = queryParams[param];
-                    console.log(query)
-                    query = query.where(param, "==", value)
-                    console.log(value)
-                }
-            }
-
+            setUpQuery(queryParams, query)
         }
 
         const transactions = (await query.get()).docs;
@@ -426,14 +417,7 @@ mapossaDataTech.users.get("/:idUser/" + CompteFinancier.collectionName, async (r
         if (queryParams) {
             // si il ya des querry params
 
-            for (const param in queryParams) {
-                if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
-                    const value = queryParams[param];
-                    query = query.where(param, "==", value)
-                    console.log(param)
-                    console.log(value)
-                }
-            }
+            setUpQuery(queryParams, query)
 
         }
 
@@ -488,7 +472,7 @@ mapossaDataTech.users.put("/:idUser/" + CompteFinancier.collectionName, async (r
         // on regarde si le corps de la requête est un tableau
         // pour savoir que l'on est entrain de vouloir modifier plusieurs
         // comptes à la fois
-        if (Array.isArray(request.body)) {
+        if ("comptes" in request.body) {
             // alors on modifie les comptes
             const updatedComptes = await CompteFinancier.bulkUpdate(request.params.idUser, request.body);
             response.status(201).send(new Response("Les comptes ont été bien modifiées", false, updatedComptes));
@@ -499,7 +483,7 @@ mapossaDataTech.users.put("/:idUser/" + CompteFinancier.collectionName, async (r
             response.status(200).send(new Response("La requête es invalide veuillez vérifier les paramètres", true, {}));
         }
     } catch (error) {
-        response.status(500).send(new Response("Une érreur s'est produite", true, error));
+        handleError(error, response)
     }
 });
 
@@ -590,13 +574,7 @@ mapossaDataTech.users.get("/:idUser/" + Categorie.collectionName, async (request
         if (queryParams) {
             // si il ya des querry params
 
-            for (const param in queryParams) {
-                if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
-                    const value = queryParams[param];
-                    query = query.where(param, "==", value)
-                    console.log(value)
-                }
-            }
+            setUpQuery(queryParams, query)
 
         }
 

@@ -225,9 +225,7 @@ export default class MapossaDataTech {
 
     public static async suprimeTransaction(idUser: string, idTransaction: string) {
 
-        let refTransaction = await Transaction.getById(idUser, idTransaction);
-        if (!refTransaction.exists) throw new MapossaError("La transaction d'identifiant : " + idTransaction + " n'existe pas", { idTransactionRecu: idTransaction });
-        let transaction = refTransaction.data() as Transaction;
+        let transaction = (await Transaction.getById(idUser, idTransaction)) as Transaction;
 
         const trransactionsFilles = await transaction.getAllOf(idUser);
         if (!trransactionsFilles.empty) {
@@ -260,10 +258,10 @@ export default class MapossaDataTech {
     public static async updateTransaction(idUser: string, bodyTransacion: any, idTransaction: string) {
 
         console.log(bodyTransacion);
-        const refTransaction = await Transaction.getById(idUser, idTransaction);
+        
+        const transaction = (await Transaction.getById(idUser, idTransaction) )as Transaction ;
 
-        if (!refTransaction.exists) throw new MapossaError("La transaction que l'on souhaite modifier n'existe pas", { "idRecu": idTransaction });
-        let transaction = refTransaction.data() as Transaction;
+       
 
         let currentTransaction: Transaction;
 
@@ -272,7 +270,6 @@ export default class MapossaDataTech {
         } else {
             currentTransaction = bodyTransacion;
         }
-
 
         let refCompte = await CompteFinancier.getById(idUser, transaction.accountId as string);
         if (!refCompte.exists) throw new MapossaError("Le compte de la transaction que l'on souhaite modifier n'existe pas", { "idCompteRecu": transaction.accountId });
@@ -320,8 +317,11 @@ export default class MapossaDataTech {
             if (currentTransaction.finalType == "Virement") {
                 await currentTransaction.createVirement(idUser);
             }
-            await currentTransaction.createFrais(idUser);
-            await Transaction.update(idUser, currentTransaction);
+            if ( currentTransaction.fees &&  currentTransaction.fees as number > 0){
+                await currentTransaction.createFrais(idUser);
+            }
+            
+            await Transaction.update(idUser, currentTransaction , idTransaction);
 
         } else {
             console.log("On comence à regarder si la transacion est un virement entrant")
@@ -349,7 +349,7 @@ export default class MapossaDataTech {
                                 console.log(frais.amount);
                                 console.log(currentTransaction.fees);
                                 if (frais.amount != currentTransaction.fees) {
-                                    frais.amount = currentTransaction.fees;
+                                    frais.amount = currentTransaction.fees as number;
                                     promises.push(MapossaDataTech.updateTransaction(idUser, frais, frais.id as string));
                                 }
 
@@ -377,7 +377,7 @@ export default class MapossaDataTech {
             //augmentation
 
             currentTransaction.id = transaction.id;
-            await Transaction.update(idUser, currentTransaction);
+            await Transaction.update(idUser, currentTransaction , idTransaction);
         }
 
 
@@ -450,7 +450,7 @@ export default class MapossaDataTech {
         const transactionPaiement = [];
         const autres = []
         for (const transaction of transactions) {
-
+            console.log(transaction)
             if ("initialType" in transaction && transaction.initialType == "Paiement" as initialType && transaction.accountId) {
                 transactionPaiement.push(MapossaDataTech.creerTransaction(idUser, transaction))
             } else {
@@ -463,41 +463,27 @@ export default class MapossaDataTech {
         /** Enegistement des transactions */
         await Promise.all(transactionPaiement);
 
-
-
-
-
-
-
-        // const comptes = await CompteFinancier.getAllOfUser(idUser);
-
-        // comptes.forEach(async (compte) => {
-
-        //     const transactionsduCompte = transactions.filter(el => el.idCompte == compte.id);
-        //     if (transactionsduCompte.length > 0) {
-        //         let sommeEntree = 0;
-        //         let sommeSortie = 0;
-
-
-        //         transactionsduCompte.forEach((t) => {
-        //             console.log(t)
-
-        //             if (t.flux == "Entrant") { sommeEntree += t.montant };
-        //             if (t.flux == "Sortant") {
-        //                 sommeSortie += t.montant
-        //             };
-
-
-        //         })
-        //         compte.sommeEntree = sommeEntree;
-        //         compte.sommeSortie = sommeSortie;
-        //         await compte.updateSolde(idUser)
-        //     }
-
-
-        // })
-        // await Transaction.bulkCreate(idUser, transactions)
-
     }
 
+}
+//QueryString.ParsedQs
+export function setUpQuery( queryParams : any , query :FirebaseFirestore.Query<any> ) {
+    for (const param in queryParams) {
+        if (Object.prototype.hasOwnProperty.call(queryParams, param)) {
+            const value = queryParams[param];
+            console.log(query)
+            switch (value) {
+                case "isNotEmpty":
+                    query = query.where(param, "!=", "")
+                    break;
+                case "":
+                    query = query.where(param, "==", null)
+                    break;
+                default:
+                    query = query.where(param, "==", value)
+                    break;
+            }
+            console.log(value)
+        }
+    }
 }

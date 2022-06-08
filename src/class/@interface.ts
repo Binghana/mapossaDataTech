@@ -114,47 +114,7 @@ export interface ISystemData {
     // deleteAll(): IData[];
 }
 
-// export abstract class SystemData implements ISystemData {
-//     constructor(){};
-//     public abstract readonly collectionName : string ;
-//     /**
-//      * Indique l'identifiant de l'entitié dans la collection
-//      */
-//     id: string | undefined;
-//     /**
-//      * Représente la date de création de la donnée
-//      */
-//     createDate: Date = new Date();
-//     /**
-//      * Représente la dernière date de mise à jour de la donnée
-//      */
-//     updateDate: Date = new Date();
-    
-//     static async normalize() {}
-//     abstract create(): Promise<SystemData>;
-//     abstract update(): Promise<SystemData>;
-//     abstract delete(): Promise<SystemData>;
 
-// }
-
-// class test extends SystemData {
-//     constructor(){ super()}
-//     public readonly collectionName: string;
-//     create(): Promise<SystemData> {
-//         throw new Error("Method not implemented.");
-//     }
-//     update(): Promise<SystemData> {
-//         throw new Error("Method not implemented.");
-//     }
-//     delete(): Promise<SystemData> {
-//         throw new Error("Method not implemented.");
-//     }
-//     static normalize() {
-
-//     }
-
-
-// }
 export function handleError(error : any, response : any) {
     console.log(error);
     

@@ -4,6 +4,7 @@ import { initialType, finalType, devise, flux, decision, typeOperateur, SMS, Ope
 import MapossaDataTech from "../mapossaDataTech";
 
 import MapossaError from "../mapossaError";
+import Categorie from "./categorie";
 import CompteFinancier from "./compteFinancier";
 
 
@@ -45,7 +46,7 @@ export default class Transaction implements ISystemData {
     /**
      * Indique le type Final de la transaction
      */
-    public finalType?: finalType| null = null;
+    public finalType?: finalType | null = null;
     /**
      * représente le flux de la transaction effectuée (Entrant || Sortant)
      */
@@ -53,9 +54,9 @@ export default class Transaction implements ISystemData {
     /**
      * représente le montant de la transaction
      */
-    public amount?: number | null = null;
+    public amount?: number = -1;
 
-    
+
     /**
      * représente les information supplémentaires que 
      * l'utilisateur souhaite noter sur sa transaction
@@ -100,7 +101,7 @@ export default class Transaction implements ISystemData {
     /**
      * représente le centre de messageire de l'opérateur qui a énvoyé un SMS financier
      */
-    public serviceCenter?: phoneNumber | null = null ;
+    public serviceCenter?: phoneNumber | null = null;
     /**
      * représente l'id du compte sur lequel est effectuée la transaction mère
      */
@@ -129,7 +130,7 @@ export default class Transaction implements ISystemData {
      * représente l'url du logo du compte sur lequel est effectuée la transaction fille de
      * revenu
      */
-    public imageReceiverAccount?: string | null = null ;
+    public imageReceiverAccount?: string | null = null;
     /**
      * représente la date à laquelle l'utilisateur a éffectué 
      * la transaction dans la vie réelle
@@ -140,7 +141,7 @@ export default class Transaction implements ISystemData {
      * représente l'heure à laquelle l'utilisateur 
      * a éffectué la transaction dans la vie réelle
      */
-    public hour?: hour | null = null ;
+    public hour?: hour | null = null;
     /**
      * représente l'information supplémentaire donnée par l'utilisateur pour définir le type final
      * de la transaction ( (Depot[Moi meme || Quelqu'un d'autre]) || (Transfert[Entrant || Sortant || Vers un de
@@ -187,7 +188,7 @@ export default class Transaction implements ISystemData {
      * détermine si le centre de messagerie de l'utilisateur est inconnu (True: le centre de
      * messagerie n'est pas connu || False: le centre de messagerie est connu)
      */
-    public alert?: boolean | null = null ;
+    public alert?: boolean | null = null;
 
     /**
      * détermine si l'algorithme n'a pas extrait le montant du SMS 
@@ -353,11 +354,10 @@ export default class Transaction implements ISystemData {
      * @returns un object représentant la transaction demandée
      */
     static async getById(idUser: string, idTransaction: string) {
-        try {
-            return (await this.collection(idUser).doc(idTransaction).get());
-        } catch (error) {
-            throw (error);
-        }
+        let t = (await this.collection(idUser).doc(idTransaction).get())
+        if (!t.exists) throw new MapossaError("La Transaction demandé n'existe pas");
+        return t.data();
+
     }
     /**
      * Cette fonction permet de récuperer toutes les transactions 
@@ -465,11 +465,11 @@ export default class Transaction implements ISystemData {
      * que l'on souhaite modifier
      * @returns un object représentant la transaction qui a été modifiée
      */
-    static async update(idUser: string, transaction: Transaction): Promise<Transaction> {
+    static async update(idUser: string, transaction: Transaction , idTransaction : string) {
 
 
-        await Transaction.collection(idUser).doc(transaction.id as string).update({ ...transaction });
-        return Transaction.normalize(transaction)
+       return await Transaction.collection(idUser).doc(idTransaction).update({ ...transaction });
+        
     }
     /**
      * Cette fonctions permet de modifier un certains nombre de transactions
@@ -592,7 +592,7 @@ export default class Transaction implements ISystemData {
         if (this.fees && this.fees <= 0) throw new Error("Impossible de créer la transaction de frais car le montant des frais est absent ou nul")
         let f = new Transaction();
         f.finalType = "Depense";
-        f.amount = this.fees;
+        f.amount = this.fees as number;
         f.flux = "Sortant";
         f.accountId = this.accountId
         f.dateTransaction = this.dateTransaction;
@@ -607,8 +607,8 @@ export default class Transaction implements ISystemData {
     }
     public async createVirement(idUser: string) {
 
-        if (this.finalType != "Virement" ) throw new MapossaError("Impossible de créer le virement car la transaction n'a pas pour type final virement");
-        
+        if (this.finalType != "Virement") throw new MapossaError("Impossible de créer le virement car la transaction n'a pas pour type final virement");
+
         if (!this.idReceiverAccount) {
             throw new MapossaError("Impossible de créer la transaction fille de virement car \nil manque l'identifiant du compte de la transactin fille")
         }
@@ -647,5 +647,35 @@ export default class Transaction implements ISystemData {
     //     transactionInit.typeFinal= "Revenu";
     //     return transactionInit;
     // }
+    /**
+     * Cateorise une transactiion suivant l'identifiant de la catégorie
+     * Cout : 2-3 Lecture ; 0-2 Update
+     * @param idUser Représente l'identifiant de l'utilisateur dont on souhaite mettre à jour la transaction
+     * @param idCategorie Représente l'identiiant de la catégorie à associer
+     */
+    async categorise(idUser: string, idCategorie: string) {
+        const oldTransaction = (await Transaction.getById(idUser, this.id as string)) as Transaction;
+        const categorie = (await Categorie.getById(idUser, idCategorie)) as Categorie;
 
+        if (oldTransaction.idCategory) {
+            console.log("La transaction a déjà une catégorie")
+            if (oldTransaction.idCategory != categorie.id) {
+                console.log("La catégorie est différente de la catégorie actuelle, il s'agit d'une modification de categorie")
+                const oldCategorie = (await Categorie.getById(idUser, oldTransaction.idCategory)) as Categorie;
+
+                this.idCategory = categorie.id;
+
+                oldCategorie.montantCumule -= this.amount as number;
+                categorie.montantCumule += this.amount  as number;
+                
+                await Categorie.bulkUpdate(idUser, [oldCategorie, categorie])     
+
+            }
+        } else {
+            this.idCategory = categorie.id;
+            categorie.montantCumule += this.amount as number;
+            await categorie.update(idUser);
+        }
+
+    }
 }
